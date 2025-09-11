@@ -20,8 +20,9 @@
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
 #include <DesiredConfiguration.hpp>
+#include <utils.hpp>
 
-//#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <labrob_qpsolvers/qpsolvers.hpp>
 
 namespace labrob {
 
@@ -33,10 +34,9 @@ struct WholeBodyControllerParams {
 
   double weight_q_ddot;
   double weight_com;
-  double weight_lsole;
-  double weight_rsole;
-  double weight_torso;
-  double weight_pelvis;
+  double weight_lwheel;
+  double weight_rwheel;
+  double weight_base;
   double weight_regulation;
   double weight_angular_momentum;
 
@@ -47,9 +47,6 @@ struct WholeBodyControllerParams {
   double gamma;
 
   double mu;
-
-  double foot_length;
-  double foot_width;
 
   static WholeBodyControllerParams getDefaultParams();
 };
@@ -100,7 +97,7 @@ class WholeBodyController {
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
 
-  //std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 
 };
 

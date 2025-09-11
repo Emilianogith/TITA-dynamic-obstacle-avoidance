@@ -14,10 +14,10 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
 endif()
 
 # Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
-# set(blasfeo_INCLUDE_DIRS /Users/emilianoparadiso/.local/blasfeo/include)
-# set(hpipm_INCLUDE_DIRS /Users/emilianoparadiso/.local/hpipm/include)
-# set(blasfeo_LIBRARIES /Users/emilianoparadiso/.local/blasfeo/lib/libblasfeo.a)
-# set(hpipm_LIBRARIES /Users/emilianoparadiso/.local/hpipm/lib/libhpipm.a)
+set(blasfeo_INCLUDE_DIRS /Users/emilianoparadiso/.local/blasfeo/include)
+set(hpipm_INCLUDE_DIRS /Users/emilianoparadiso/.local/hpipm/include)
+set(blasfeo_LIBRARIES /Users/emilianoparadiso/.local/blasfeo/lib/libblasfeo.a)
+set(hpipm_LIBRARIES /Users/emilianoparadiso/.local/hpipm/lib/libhpipm.a)
 
 add_library(
   UtilsLib STATIC
@@ -31,10 +31,14 @@ add_library(
 target_include_directories(UtilsLib
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${hpipm_INCLUDE_DIRS}
+    ${blasfeo_INCLUDE_DIRS}
 )
 
 target_link_libraries(UtilsLib
   pinocchio::pinocchio
+  ${hpipm_LIBRARIES}
+  ${blasfeo_LIBRARIES}
 )
 
 add_executable(main

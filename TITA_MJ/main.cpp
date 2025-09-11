@@ -98,18 +98,18 @@ int main() {
 
   // Init robot posture:
   mjtNum joint_left_leg_1_init = 0.0;
-  mjtNum joint_left_leg_2_init = 0.0;
-  mjtNum joint_left_leg_3_init = 0.0;
+  mjtNum joint_left_leg_2_init = -0.5;
+  mjtNum joint_left_leg_3_init = 1.0;
   mjtNum joint_left_leg_4_init = 0.0;
   mjtNum joint_right_leg_1_init = 0.0;
-  mjtNum joint_right_leg_2_init = 0.0;
-  mjtNum joint_right_leg_3_init = 0.0;
+  mjtNum joint_right_leg_2_init = -0.5;
+  mjtNum joint_right_leg_3_init = 1.0;
   mjtNum joint_right_leg_4_init = 0.0;
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399;                                   // z
-  mj_data_ptr->qpos[3] = 0.0;                                     // η
+  mj_data_ptr->qpos[2] = 0.399-0.05;                                   // z
+  mj_data_ptr->qpos[3] = 1.0;                                     // η
   mj_data_ptr->qpos[4] = 0.0;                                     // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
   mj_data_ptr->qpos[6] = 0.0;                                     // ε_z
@@ -122,7 +122,6 @@ int main() {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "joint_right_leg_3")]] = joint_right_leg_3_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "joint_right_leg_4")]] = joint_right_leg_4_init;
 
-  // mj_data_ptr->qpos changes continuously during simulation. You may want to save the initial pose, or reset the robot later
   mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * mj_model_ptr->nq);
   memcpy(qpos0, mj_data_ptr->qpos, mj_model_ptr->nq * sizeof(mjtNum));
   
@@ -152,26 +151,36 @@ int main() {
   // Desired configuration:
   labrob::DesiredConfiguration des_configuration;
   des_configuration.qjnt = Eigen::VectorXd::Zero(mj_model_ptr->nu);
+  des_configuration.qjnt << 
+    0.0,   // joint_left_leg_1
+   -0.5,   // joint_left_leg_2
+    1.5,   // joint_left_leg_3
+    0.0,   // joint_left_leg_4
+    0.0,   // joint_right_leg_1
+   -0.5,   // joint_right_leg_2
+    1.5,   // joint_right_leg_3
+    0.0;   // joint_right_leg_4
   des_configuration.qjntdot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
   des_configuration.qjntddot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
-  des_configuration.position = Eigen::Vector3d::Zero();
-  des_configuration.orientation = Eigen::Quaterniond::Identity();
-  des_configuration.linear_velocity = Eigen::Vector3d::Zero();
-  des_configuration.angular_velocity = Eigen::Vector3d::Zero();
-  des_configuration.com.pos = Eigen::Vector3d::Zero();   
+  // des_configuration.position = Eigen::Vector3d(0.0, 0.0, 0.2);
+  // des_configuration.orientation = Eigen::Quaterniond::Identity();
+  // des_configuration.linear_velocity = Eigen::Vector3d::Zero();
+  // des_configuration.angular_velocity = Eigen::Vector3d::Zero();
+  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 20.0);  
   des_configuration.com.vel = Eigen::Vector3d::Zero();
   des_configuration.com.acc = Eigen::Vector3d::Zero();
-  des_configuration.lwheel.pos.p = Eigen::Vector3d::Zero();
+  des_configuration.lwheel.pos.p = Eigen::Vector3d(0.01, 0.27, 0.0);
   des_configuration.lwheel.pos.R = Eigen::Matrix3d::Identity();
   des_configuration.lwheel.vel = Eigen::Vector<double, 6>::Zero();
   des_configuration.lwheel.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel.pos.p = Eigen::Vector3d::Zero();
+  des_configuration.rwheel.pos.p = Eigen::Vector3d(0.01, -0.27, 0.0);
   des_configuration.rwheel.pos.R = Eigen::Matrix3d::Identity();
   des_configuration.rwheel.vel = Eigen::Vector<double, 6>::Zero();
   des_configuration.rwheel.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.base_link.pos = Eigen::Matrix3d::Identity();
+  des_configuration.base_link.pos =Eigen::Matrix3d::Identity();
   des_configuration.base_link.vel = Eigen::Vector3d::Zero();
   des_configuration.base_link.acc = Eigen::Vector3d::Zero();
+
 
 
   
@@ -182,9 +191,9 @@ int main() {
 
 
   // slow down:
-  bool slow_down = false;
+  bool slow_down = true;
   int count = 0;
-  
+
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -193,13 +202,17 @@ int main() {
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-    
+      
       // WBC
       labrob::JointCommand joint_command;
       joint_command = whole_body_controller_ptr->compute_inverse_dynamics(robot_state, des_configuration);
       // walking_manager.update(robot_state, joint_command);
-
+      
+      
+      
+      
       mj_step1(mj_model_ptr, mj_data_ptr);
+      // break;
 
       for (int i = 0; i < mj_model_ptr->nu; ++i) {
         int joint_id = mj_model_ptr->actuator_trnid[i * 2];
