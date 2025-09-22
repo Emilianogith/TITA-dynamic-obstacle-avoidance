@@ -1,4 +1,4 @@
-
+#pragma once
 // GLFW
 #include <GLFW/glfw3.h>
 

@@ -1,10 +1,8 @@
-#ifndef LABROB_DESIRED_CONFIGURATION
-#define LABROB_DESIRED_CONFIGURATION
+#pragma once
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-#include <JointState.hpp>
 #include <SE3.hpp>
 
 namespace labrob {
@@ -37,5 +35,3 @@ struct DesiredConfiguration {
 };
 
 } // end namespace labrob
-
-#endif

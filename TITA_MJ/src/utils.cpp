@@ -1,19 +1,5 @@
 #include <utils.hpp>
 
-// STL
-#include <fstream>
-#include <iostream>
-
-// Boost
-#include <boost/algorithm/string.hpp>
-
-// Eigen
-#include <Eigen/Geometry>
-
-// hrp4_locomotion
-#include <SE3.hpp>
-
-
 namespace labrob {
 
 Eigen::Matrix<double, 6, 1>
@@ -79,5 +65,78 @@ robot_state_to_pinocchio_joint_velocity(
   return qdot;
 }
 
+Eigen::Matrix3d skew(const Eigen::Vector3d &v) {
+    Eigen::Matrix3d m;
+    m <<     0, -v.z(),  v.y(),
+          v.z(),     0, -v.x(),
+         -v.y(),  v.x(),     0;
+    return m;
+}
+
+
+
+RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
+labrob::RobotState robot_state;
+
+robot_state.position = Eigen::Vector3d(
+  d->qpos[0], d->qpos[1], d->qpos[2]
+);
+
+robot_state.orientation = Eigen::Quaterniond(
+    d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
+);
+
+robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+    Eigen::Vector3d(
+        d->qvel[0], d->qvel[1], d->qvel[2]
+    );
+
+robot_state.angular_velocity = Eigen::Vector3d(
+  d->qvel[3], d->qvel[4], d->qvel[5]
+);
+
+for (int i = 1; i < m->njnt; ++i) {
+  const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+  robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
+  robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
+}
+
+static double force[6];
+static double result[3];
+Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+robot_state.contact_points.resize(d->ncon);
+robot_state.contact_forces.resize(d->ncon);
+for (int i = 0; i < d->ncon; ++i) {
+  mj_contactForce(m, d, i, force);
+  //mju_rotVecMatT(result, force, d->contact[i].frame);
+  mju_mulMatVec(result, d->contact[i].frame, force, 3, 3);
+  for (int row = 0; row < 3; ++row) {
+      result[row] = 0;
+      for (int col = 0; col < 3; ++col) {
+          result[row] += d->contact[i].frame[3 * col + row] * force[col];
+      }
+  }
+  sum += Eigen::Vector3d(result);
+  for (int j = 0; j < 3; ++j) {
+    robot_state.contact_points[i](j) = d->contact[i].pos[j];
+    robot_state.contact_forces[i](j) = result[j];
+  }
+}
+
+robot_state.total_force = sum;
+
+return robot_state;
+}
+
+Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
+  Eigen::Vector3d z_0 = Eigen::Vector3d(0,0,1);
+  Eigen::Vector3d n = wheel_R * z_0;
+  Eigen::Vector3d t = (Eigen::Matrix3d::Identity() - n*n.transpose()) * z_0;
+  t = t/(t.norm()); // normalize
+  Eigen::Vector3d contact_point = wheel_center - t * wheel_radius;
+
+  Eigen::Vector3d rCP = contact_point-wheel_center;
+  return rCP;
+}
 
 } // end namespace labrob

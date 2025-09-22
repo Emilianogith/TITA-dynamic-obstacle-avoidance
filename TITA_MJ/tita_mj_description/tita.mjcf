@@ -61,8 +61,7 @@
     
     
     <!-- <site name="marker" pos="0.0798491 0.306785 -0.0116186" size="0.007" rgba="0 1 0 1"/> -->
-    
-    
+
     <body name="base_link" pos="0.00000000 0.00000000 0.41700019" quat="1 0 0 0" childclass="robot">
       <freejoint name="floating_base" />
       <geom name="base_link_collision" pos="0 0 0.017" quat="1.0 0.0 0.0 0.0" type="box" size="0.235 0.15 0.095" class="collision" />

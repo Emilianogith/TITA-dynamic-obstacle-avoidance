@@ -1,5 +1,4 @@
-#ifndef LABROB_QP_SOLVER_HPP_
-#define LABROB_QP_SOLVER_HPP_
+#pragma once
 
 namespace labrob {
 namespace qpsolvers {
@@ -34,5 +33,3 @@ class QPSolver {
 
 } // end namespace labrob::qpsolvers
 } // end namespace labrob
-
-#endif // LABROB_QP_SOLVER_HPP_

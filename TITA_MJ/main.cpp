@@ -1,75 +1,14 @@
 // std
-#include <fstream>
-#include <iostream>
+// #include <fstream>
+// #include <iostream>
+// #include <map>
 
-#include <map>
-#include <mujoco/mujoco.h>
+// #include <mujoco/mujoco.h>
 
-// Pinocchio
-// #include <pinocchio/algorithm/joint-configuration.hpp>
-// #include <pinocchio/algorithm/kinematics.hpp>
-// #include <pinocchio/multibody/model.hpp>
-// #include <pinocchio/parsers/urdf.hpp>
-
-#include <JointCommand.hpp>
-#include <RobotState.hpp>
 #include <WholeBodyController.hpp>
-#include <DesiredConfiguration.hpp>
 #include "MujocoUI.hpp"
 
-labrob::RobotState
-robot_state_from_mujoco(mjModel* m, mjData* d) {
-  labrob::RobotState robot_state;
 
-  robot_state.position = Eigen::Vector3d(
-    d->qpos[0], d->qpos[1], d->qpos[2]
-  );
-
-  robot_state.orientation = Eigen::Quaterniond(
-      d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
-  );
-
-  robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
-      Eigen::Vector3d(
-          d->qvel[0], d->qvel[1], d->qvel[2]
-      );
-
-  robot_state.angular_velocity = Eigen::Vector3d(
-    d->qvel[3], d->qvel[4], d->qvel[5]
-  );
-
-  for (int i = 1; i < m->njnt; ++i) {
-    const char* name = mj_id2name(m, mjOBJ_JOINT, i);
-    robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
-    robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
-  }
-
-  static double force[6];
-  static double result[3];
-  Eigen::Vector3d sum = Eigen::Vector3d::Zero();
-  robot_state.contact_points.resize(d->ncon);
-  robot_state.contact_forces.resize(d->ncon);
-  for (int i = 0; i < d->ncon; ++i) {
-    mj_contactForce(m, d, i, force);
-    //mju_rotVecMatT(result, force, d->contact[i].frame);
-    mju_mulMatVec(result, d->contact[i].frame, force, 3, 3);
-    for (int row = 0; row < 3; ++row) {
-        result[row] = 0;
-        for (int col = 0; col < 3; ++col) {
-            result[row] += d->contact[i].frame[3 * col + row] * force[col];
-        }
-    }
-    sum += Eigen::Vector3d(result);
-    for (int j = 0; j < 3; ++j) {
-      robot_state.contact_points[i](j) = d->contact[i].pos[j];
-      robot_state.contact_forces[i](j) = result[j];
-    }
-  }
-
-  robot_state.total_force = sum;
-
-  return robot_state;
-}
 
 int main() {
   // Load MJCF (for Mujoco):
@@ -108,7 +47,7 @@ int main() {
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399-0.05;                                   // z
+  mj_data_ptr->qpos[2] = 0.399-0.05 -0.005;                                   // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
   mj_data_ptr->qpos[4] = 0.0;                                     // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
@@ -142,7 +81,7 @@ int main() {
 
 
   // Controller:
-  labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  labrob::RobotState initial_robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   std::shared_ptr<labrob::WholeBodyController> whole_body_controller_ptr = std::make_shared<labrob::WholeBodyController>(
       initial_robot_state, armatures
   );
@@ -192,6 +131,7 @@ int main() {
 
   // slow down:
   bool slow_down = true;
+  bool first_frame = false;
   int count = 0;
 
   // Simulation loop:
@@ -201,7 +141,7 @@ int main() {
 
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
-      labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+      labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
       
       // WBC
       labrob::JointCommand joint_command;
@@ -209,10 +149,9 @@ int main() {
       // walking_manager.update(robot_state, joint_command);
       
       
-      
-      
+      if (first_frame == true) {break;}
+
       mj_step1(mj_model_ptr, mj_data_ptr);
-      // break;
 
       for (int i = 0; i < mj_model_ptr->nu; ++i) {
         int joint_id = mj_model_ptr->actuator_trnid[i * 2];

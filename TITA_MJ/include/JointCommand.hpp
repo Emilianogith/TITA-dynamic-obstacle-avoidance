@@ -1,5 +1,4 @@
-#ifndef LABROB_JOINT_COMMAND_H_
-#define LABROB_JOINT_COMMAND_H_
+#pragma once
 
 // STL
 #include <string>
@@ -23,5 +22,3 @@ class JointCommand {
 }; // end class JointCommand
 
 } // end namespace labrob
-
-#endif // LABROB_JOINT_COMMAND_H_

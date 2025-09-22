@@ -1,11 +1,9 @@
-#ifndef LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_
-#define LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_
+#pragma once
 
 #include "QPSolver.hpp"
 
 // STL
 #include <memory>
-#include <iostream>
 
 // Eigen
 #include <Eigen/Core>
@@ -61,5 +59,3 @@ class QPSolverEigenWrapper {
 
 } // end namespace qpsolvers
 } // end namespace labrob
-
-#endif // LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_

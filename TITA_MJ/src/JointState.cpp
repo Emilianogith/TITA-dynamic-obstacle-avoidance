@@ -1,5 +1,3 @@
-#include <string>
-
 #include <JointState.hpp>
 
 namespace labrob {

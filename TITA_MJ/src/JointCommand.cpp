@@ -1,5 +1,3 @@
-#include <string>
-
 #include <JointCommand.hpp>
 
 namespace labrob {

@@ -1,7 +1,5 @@
 #include <RobotState.hpp>
 
-#include <Eigen/Core>
-
 namespace labrob {
 
 RobotState::RobotState()

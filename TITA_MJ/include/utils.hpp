@@ -1,18 +1,10 @@
-#ifndef LABROB_UTILS_HPP_
-#define LABROB_UTILS_HPP_
-
-// STL
-#include <cmath>
-#include <deque>
-
-// Eigen
-#include <Eigen/Core>
+#pragma once
 
 // Pinocchio
 #include <pinocchio/multibody/model.hpp>
 
-
 #include <RobotState.hpp>
+#include <mujoco/mujoco.h>
 
 namespace labrob {
 
@@ -37,7 +29,10 @@ robot_state_to_pinocchio_joint_velocity(
     const labrob::RobotState& robot_state
 );
 
+Eigen::Matrix3d skew(const Eigen::Vector3d &v);
+
+RobotState robot_state_from_mujoco(mjModel* m, mjData* d);
+
+Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
 
 } // end namespace labrob
-
-#endif // LABROB_UTILS_HPP_

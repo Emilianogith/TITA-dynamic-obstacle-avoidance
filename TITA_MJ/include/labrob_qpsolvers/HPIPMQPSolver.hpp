@@ -1,5 +1,4 @@
-#ifndef LABROB_HPIPM_QP_SOLVER_HPP_
-#define LABROB_HPIPM_QP_SOLVER_HPP_
+#pragma once
 
 #include "QPSolver.hpp"
 
@@ -19,7 +18,6 @@
 #include <hpipm_d_dense_qp_sol.h>
 #include <hpipm_timing.h>
 
-#include <iostream>
 
 namespace labrob {
 namespace qpsolvers {
@@ -115,5 +113,3 @@ class HPIPMQPSolver : public QPSolver<double> {
 
 } // end namespace labrob::qpsolvers
 } // end namespace labrob
-
-#endif // LABROB_HPIPM_QP_SOLVER_HPP_

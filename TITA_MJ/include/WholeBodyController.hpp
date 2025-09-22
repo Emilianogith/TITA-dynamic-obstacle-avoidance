@@ -1,24 +1,19 @@
-//
-// Created by mmaximo on 20/02/24.
-//
-
-#ifndef LABROB_WHOLE_BODY_CONTROLLER_H_
-#define LABROB_WHOLE_BODY_CONTROLLER_H_
+#pragma once
 
 // Pinocchio
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/centroidal.hpp>
 #include <pinocchio/algorithm/frames.hpp>
-#include <pinocchio/algorithm/joint-configuration.hpp>
-#include <pinocchio/algorithm/kinematics.hpp>
-#include <pinocchio/algorithm/model.hpp>
+// #include <pinocchio/algorithm/joint-configuration.hpp>     //|
+// #include <pinocchio/algorithm/kinematics.hpp>              //|--> not necessary
+// #include <pinocchio/algorithm/model.hpp>                   //|
 #include <pinocchio/algorithm/rnea.hpp>
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
 
 #include <JointCommand.hpp>
-#include <RobotState.hpp>
+// #include <RobotState.hpp>        //included in utils.hpp
 #include <DesiredConfiguration.hpp>
 #include <utils.hpp>
 
@@ -100,7 +95,4 @@ class WholeBodyController {
   std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 
 };
-
 }
-
-#endif //LABROB_WHOLE_BODY_CONTROLLER_H_
