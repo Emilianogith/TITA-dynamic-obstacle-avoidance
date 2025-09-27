@@ -37,19 +37,19 @@ int main() {
 
   // Init robot posture:
   mjtNum joint_left_leg_1_init = 0.0;
-  mjtNum joint_left_leg_2_init = -0.5;
-  mjtNum joint_left_leg_3_init = 1.0;
+  mjtNum joint_left_leg_2_init = 0.5;
+  mjtNum joint_left_leg_3_init = -1.0;
   mjtNum joint_left_leg_4_init = 0.0;
   mjtNum joint_right_leg_1_init = 0.0;
-  mjtNum joint_right_leg_2_init = -0.5;
-  mjtNum joint_right_leg_3_init = 1.0;
+  mjtNum joint_right_leg_2_init = 0.5;
+  mjtNum joint_right_leg_3_init = -1.0;
   mjtNum joint_right_leg_4_init = 0.0;
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399-0.05 -0.005;                                   // z
+  mj_data_ptr->qpos[2] = 0.399-0.05 -0.005 ;//+0.04;//-0.05; //- 0.3 ;                                   // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
-  mj_data_ptr->qpos[4] = 0.0;                                     // ε_x
+  mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down                                    // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
   mj_data_ptr->qpos[6] = 0.0;                                     // ε_z
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "joint_left_leg_1")]] = joint_left_leg_1_init;
@@ -92,12 +92,12 @@ int main() {
   des_configuration.qjnt = Eigen::VectorXd::Zero(mj_model_ptr->nu);
   des_configuration.qjnt << 
     0.0,   // joint_left_leg_1
-   -0.5,   // joint_left_leg_2
-    1.5,   // joint_left_leg_3
+    0.5,   // joint_left_leg_2
+    -1.0,   // joint_left_leg_3
     0.0,   // joint_left_leg_4
     0.0,   // joint_right_leg_1
-   -0.5,   // joint_right_leg_2
-    1.5,   // joint_right_leg_3
+    0.5,   // joint_right_leg_2
+    -1.0,   // joint_right_leg_3
     0.0;   // joint_right_leg_4
   des_configuration.qjntdot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
   des_configuration.qjntddot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
@@ -105,22 +105,28 @@ int main() {
   // des_configuration.orientation = Eigen::Quaterniond::Identity();
   // des_configuration.linear_velocity = Eigen::Vector3d::Zero();
   // des_configuration.angular_velocity = Eigen::Vector3d::Zero();
-  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 20.0);  
+  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 0.35);  
   des_configuration.com.vel = Eigen::Vector3d::Zero();
   des_configuration.com.acc = Eigen::Vector3d::Zero();
-  des_configuration.lwheel.pos.p = Eigen::Vector3d(0.01, 0.27, 0.0);
-  des_configuration.lwheel.pos.R = Eigen::Matrix3d::Identity();
-  des_configuration.lwheel.vel = Eigen::Vector<double, 6>::Zero();
-  des_configuration.lwheel.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel.pos.p = Eigen::Vector3d(0.01, -0.27, 0.0);
-  des_configuration.rwheel.pos.R = Eigen::Matrix3d::Identity();
-  des_configuration.rwheel.vel = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel.acc = Eigen::Vector<double, 6>::Zero();
+  des_configuration.lwheel_contact.pos.p = Eigen::Vector3d(0.01, 0.27, 0.0);
+  des_configuration.lwheel_contact.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
+  des_configuration.lwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
+  des_configuration.lwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
+  des_configuration.rwheel_contact.pos.p = Eigen::Vector3d(0.01, -0.27, 0.0);
+  des_configuration.rwheel_contact.pos.R = Eigen::Matrix3d::Identity();
+  des_configuration.rwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
+  des_configuration.rwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
   des_configuration.base_link.pos =Eigen::Matrix3d::Identity();
   des_configuration.base_link.vel = Eigen::Vector3d::Zero();
   des_configuration.base_link.acc = Eigen::Vector3d::Zero();
+  des_configuration.in_contact = false;
 
 
+
+  // zero gravity
+  // mj_model_ptr->opt.gravity[0] = 0.0;
+  // mj_model_ptr->opt.gravity[1] = 0.0;
+  // mj_model_ptr->opt.gravity[2] = 0.0;
 
   
   // Mujoco UI
@@ -134,6 +140,8 @@ int main() {
   bool first_frame = false;
   int count = 0;
 
+  mjtNum initial_simulation_time = mj_data_ptr->time;
+
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -143,6 +151,14 @@ int main() {
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
       labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
       
+
+      if (mj_data_ptr->time - initial_simulation_time > 0.466){
+      // des_configuration.qjnt(2) = 0.0; 
+        des_configuration.in_contact = true; 
+      
+      }
+      // std::cout << "Tempo " <<  mj_data_ptr->time - initial_simulation_time << std::endl;
+
       // WBC
       labrob::JointCommand joint_command;
       joint_command = whole_body_controller_ptr->compute_inverse_dynamics(robot_state, des_configuration);
@@ -165,6 +181,11 @@ int main() {
 
       mj_step2(mj_model_ptr, mj_data_ptr);
 
+      
+      joint_vel_log_file << std::endl;
+      joint_eff_log_file << std::endl;
+      
+     
       // slow down the simulation:
       if (slow_down == true) {
         if (count<10){
@@ -172,10 +193,7 @@ int main() {
         };
         ++count;
       }
-
-      joint_vel_log_file << std::endl;
-      joint_eff_log_file << std::endl;
-    
+      
     }
 
     // Fine misurazione del tempo

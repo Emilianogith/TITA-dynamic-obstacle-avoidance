@@ -29,8 +29,9 @@ struct DesiredConfiguration {
   Eigen::VectorXd qjnt, qjntdot, qjntddot;
   
   labrob::ee3 com;
-  labrob::ee6 lwheel, rwheel;
+  labrob::ee6 lwheel_contact, rwheel_contact; // contact frame position + orientation
   labrob::ee_rot base_link;
+  bool in_contact;
 
 };
 

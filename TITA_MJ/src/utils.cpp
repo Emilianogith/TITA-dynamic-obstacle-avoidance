@@ -138,5 +138,18 @@ Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::Matrix
   Eigen::Vector3d rCP = contact_point-wheel_center;
   return rCP;
 }
+Eigen::Matrix3d compute_contact_frame(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
+  Eigen::Vector3d z_0 = Eigen::Vector3d(0,0,1);
+  Eigen::Vector3d s = wheel_R * z_0;
+  Eigen::Vector3d n = (Eigen::Matrix3d::Identity() - s*s.transpose()) * z_0;
+  n = n/(n.norm()); // normalize
+  Eigen::Vector3d t = s.cross(n);
+  t = t/(t.norm()); // normalize
+  Eigen::Matrix3d R;
+  R.col(0) = t;  
+  R.col(1) = s;   
+  R.col(2) = n;
+  return R;
+}
 
 } // end namespace labrob

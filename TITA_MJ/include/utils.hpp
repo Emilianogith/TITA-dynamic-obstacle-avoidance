@@ -34,5 +34,6 @@ Eigen::Matrix3d skew(const Eigen::Vector3d &v);
 RobotState robot_state_from_mujoco(mjModel* m, mjData* d);
 
 Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
+Eigen::Matrix3d compute_contact_frame(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
 
 } // end namespace labrob
