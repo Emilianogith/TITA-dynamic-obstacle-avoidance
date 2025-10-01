@@ -47,7 +47,7 @@ int main() {
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399-0.05 -0.005 ;//+0.04;//-0.05; //- 0.3 ;                                   // z
+  mj_data_ptr->qpos[2] = 0.399 + 0.05;  //- 0.3 ;                                   // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
   mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down                                    // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
@@ -105,18 +105,21 @@ int main() {
   // des_configuration.orientation = Eigen::Quaterniond::Identity();
   // des_configuration.linear_velocity = Eigen::Vector3d::Zero();
   // des_configuration.angular_velocity = Eigen::Vector3d::Zero();
-  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 0.35);  
-  des_configuration.com.vel = Eigen::Vector3d::Zero();
+  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 0.41);  
+  des_configuration.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
   des_configuration.com.acc = Eigen::Vector3d::Zero();
-  des_configuration.lwheel_contact.pos.p = Eigen::Vector3d(0.01, 0.27, 0.0);
+  des_configuration.lwheel_contact.pos.p = Eigen::Vector3d(0.0, 0.27, 0.095);
   des_configuration.lwheel_contact.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
+  // des_configuration.lwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
   des_configuration.lwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
   des_configuration.lwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel_contact.pos.p = Eigen::Vector3d(0.01, -0.27, 0.0);
+  des_configuration.rwheel_contact.pos.p = Eigen::Vector3d(0.0, -0.27, 0.095);
   des_configuration.rwheel_contact.pos.R = Eigen::Matrix3d::Identity();
+  // des_configuration.rwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
   des_configuration.rwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
   des_configuration.rwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
   des_configuration.base_link.pos =Eigen::Matrix3d::Identity();
+  // des_configuration.base_link.pos << 0,-1,0,  1,0,0,  0,0,1;
   des_configuration.base_link.vel = Eigen::Vector3d::Zero();
   des_configuration.base_link.acc = Eigen::Vector3d::Zero();
   des_configuration.in_contact = false;
@@ -136,7 +139,7 @@ int main() {
 
 
   // slow down:
-  bool slow_down = true;
+  bool slow_down = false;
   bool first_frame = false;
   int count = 0;
 
@@ -152,11 +155,13 @@ int main() {
       labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
       
 
-      if (mj_data_ptr->time - initial_simulation_time > 0.466){
-      // des_configuration.qjnt(2) = 0.0; 
-        des_configuration.in_contact = true; 
+      // if (mj_data_ptr->time - initial_simulation_time > 0.466){
+      // // des_configuration.qjnt(2) = 0.0; 
+      //   des_configuration.in_contact = true; 
       
-      }
+      // }
+      // des_configuration.com.pos(0) = 0.0 + des_configuration.com.vel(0) * (mj_data_ptr->time - initial_simulation_time);
+      // std::cout << "des_configuration.com.pos " <<  des_configuration.com.pos << std::endl;
       // std::cout << "Tempo " <<  mj_data_ptr->time - initial_simulation_time << std::endl;
 
       // WBC

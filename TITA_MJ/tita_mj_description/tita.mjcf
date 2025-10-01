@@ -57,7 +57,7 @@
     <!-- <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/> -->
 
     <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor1" pos="0 0 -0.105" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
+    <geom name="floor1" pos="0 0 0" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
     
     
     <!-- <site name="marker" pos="0.0798491 0.306785 -0.0116186" size="0.007" rgba="0 1 0 1"/> -->
@@ -66,7 +66,10 @@
     <site name="marker2" pos="0 0.1 0" size="0.017" rgba="0 1 0 1"/>
     <site name="marker3" pos="0 0 0.1" size="0.017" rgba="0 0 1 1"/>
 
-    <site name="markerx" pos="0 0 0.04" size="0.017" rgba="1 1 1 1"/>
+  
+    <site name="markerCOM" pos="0.0 0.0 0.41" size="0.017" rgba="0 0 1 1"/>
+    <site name="markerL" pos="0.0 0.27 0.095" size="0.017" rgba="0 0 1 1"/>
+    <site name="markerR" pos="0.0 -0.27 0.095" size="0.017" rgba="0 0 1 1"/>
 
 
 

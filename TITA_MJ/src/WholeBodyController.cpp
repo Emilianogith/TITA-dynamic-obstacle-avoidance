@@ -8,25 +8,28 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 100000.0;
-  params.Kd_motion = 5000.0;
-  params.Kp_regulation = 10000.0; //100000.0
-  params.Kd_regulation = 500;//500.0;
+  params.Kp_motion = 110000;              //110000.0; // 100000.0;
+  params.Kd_motion = 8000;                //9000.0;   // 5000.0;
+  params.Kp_regulation = 1000.0;          // 1000.0;  //100000.0
+  params.Kd_regulation = 50;                          //500.0;
 
-  params.weight_q_ddot = 1.0;//1e-12;
-  params.weight_com = 11.0;
-  params.weight_lwheel = 0.0;
-  params.weight_rwheel = 0.0;
-  params.weight_base = 1.0;             // non funziona. forse perche serve A_acc?
-  params.weight_angular_momentum = 10.0;//1e-4;
-  params.weight_regulation = 0.0; //100 // 10000.0;
+  params.Kp_wheel = 10000.0;   
+  params.Kd_wheel = 500.0;   
 
-  params.cmm_selection_matrix_x = 0.1;//e-6;
-  params.cmm_selection_matrix_y = 10000;//e-6;
-  params.cmm_selection_matrix_z = 0.1;//e-4;
+  params.weight_q_ddot = 1.0;             //1.0;
+  params.weight_com = 11.0;               //11.0;
+  params.weight_lwheel = 1.0; 
+  params.weight_rwheel = 1.0; 
+  params.weight_base = 0.5;               //0.5; 
+  params.weight_angular_momentum = 1.0;   //1.0;
+  params.weight_regulation = 1e-4;        // 1e-4  
 
-  params.gamma = 0.1; //params.Kd_motion;
-  params.mu = 0.5;
+  params.cmm_selection_matrix_x = 100000;    //100000;
+  params.cmm_selection_matrix_y = 100000;    //100000;
+  params.cmm_selection_matrix_z = 0.1;
+
+  params.gamma = 0.1; 
+  params.mu = 0.5; 
 
   return params;
 }
@@ -141,8 +144,6 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobianTimeVariation(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_dot_);
   
-  // vedi se J_contact = J_wheel()*qdot + r * qdot_wheel
-  // std::cout << "J_left_wheel " << J_left_wheel_<< std::endl;
 
 
   // J_contact_wheel construction
@@ -182,6 +183,11 @@ WholeBodyController::compute_inverse_dynamics(
   J_left_contact_dot.bottomRows(3) = J_left_wheel_dot_.bottomRows<3>();
 
 
+  Eigen::Vector3d right_contact = r_wheel_center + right_rCP;
+  Eigen::Vector3d left_contact = l_wheel_center + left_rCP;
+
+  std::cout << " r_wheel_center" << r_wheel_center << std::endl;
+  std::cout << " l_wheel_center" << l_wheel_center << std::endl;
 
 
 
@@ -202,11 +208,11 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::MatrixXd r_contact_frame_R = labrob::compute_contact_frame(r_wheel_center, r_wheel_R, wheel_radius_);
   Eigen::MatrixXd l_contact_frame_R = labrob::compute_contact_frame(l_wheel_center, l_wheel_R, wheel_radius_);
-  labrob::SE3 current_lwheel_contact_pos = labrob::SE3(l_contact_frame_R, l_wheel_center + left_rCP);
-  Eigen::Vector<double, 6> current_lwheel_contact_vel = J_left_contact * qdot;
+  labrob::SE3 current_lwheel_contact_pos = labrob::SE3(l_contact_frame_R, l_wheel_center);
+  Eigen::Vector<double, 6> current_lwheel_contact_vel = J_left_wheel_ * qdot;
 
-  labrob::SE3 current_rwheel_contact_pos = labrob::SE3(r_contact_frame_R, r_wheel_center + right_rCP);
-  Eigen::Vector<double, 6> current_rwheel_contact_vel = J_left_contact * qdot;
+  labrob::SE3 current_rwheel_contact_pos = labrob::SE3(r_contact_frame_R, r_wheel_center);
+  Eigen::Vector<double, 6> current_rwheel_contact_vel = J_right_wheel_ * qdot;
 
 
   // Compute desired accelerations
@@ -214,13 +220,13 @@ WholeBodyController::compute_inverse_dynamics(
   auto err_com_vel = desired.com.vel - current_com_vel;
 
   auto err_lwheel = err_frameplacement(
-      pinocchio::SE3(desired.lwheel_contact.pos.R, desired.lwheel_contact.pos.p),
+      pinocchio::SE3(desired.lwheel_contact.pos.R, desired.lwheel_contact.pos.p), 
       pinocchio::SE3(current_lwheel_contact_pos.R, current_lwheel_contact_pos.p)
   );
   auto err_lwheel_vel = desired.lwheel_contact.vel - current_lwheel_contact_vel;
 
   auto err_rwheel = err_frameplacement(
-      pinocchio::SE3(desired.rwheel_contact.pos.R, desired.rwheel_contact.pos.p),   
+      pinocchio::SE3(desired.rwheel_contact.pos.R, desired.rwheel_contact.pos.p),    
       pinocchio::SE3(current_rwheel_contact_pos.R, current_rwheel_contact_pos.p)
   );
 
@@ -229,29 +235,34 @@ WholeBodyController::compute_inverse_dynamics(
   auto err_base_orientation = err_rotation(desired.base_link.pos, current_base_link_pos);
   auto err_base_orientation_vel = desired.base_link.vel - current_base_link_vel;
 
-  Eigen::VectorXd q_current = q.tail(q.size() - 7);
-  Eigen::VectorXd qdot_current = qdot.tail(qdot.size() - 6);
+  Eigen::VectorXd q_joint = q.tail(q.size() - 7);
+  Eigen::VectorXd qdot_joint = qdot.tail(qdot.size() - 6);
 
   Eigen::VectorXd err_posture(6 + n_joints_);
-  err_posture << Eigen::VectorXd::Zero(6), desired.qjnt - q_current;
+  err_posture << Eigen::VectorXd::Zero(6), desired.qjnt - q_joint;
 
   Eigen::VectorXd err_posture_vel(6 + n_joints_); 
-  err_posture_vel << Eigen::VectorXd::Zero(6), desired.qjntdot - qdot_current;
+  err_posture_vel << Eigen::VectorXd::Zero(6), desired.qjntdot - qdot_joint;
 
   Eigen::MatrixXd err_posture_selection_matrix = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
-  err_posture_selection_matrix.block(6, 6, n_joints_, n_joints_) = Eigen::MatrixXd::Identity(n_joints_, n_joints_);
+  Eigen::MatrixXd matrix_with_no_wheel = Eigen::MatrixXd::Identity(n_joints_, n_joints_);
+  matrix_with_no_wheel(3, 3) -= 1;
+  matrix_with_no_wheel(7, 7) -= 1;
+  err_posture_selection_matrix.block(6, 6, n_joints_, n_joints_) = matrix_with_no_wheel;
 
   Eigen::MatrixXd cmm_selection_matrix = Eigen::MatrixXd::Zero(3, 6);
   cmm_selection_matrix(0, 3) = params_.cmm_selection_matrix_x;
   cmm_selection_matrix(1, 4) = params_.cmm_selection_matrix_y;
   cmm_selection_matrix(2, 5) = params_.cmm_selection_matrix_z;
 
+
+
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
   Eigen::VectorXd a_jnt_total = desired_qddot + params_.Kp_regulation * err_posture + params_.Kd_regulation * err_posture_vel;
   Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
-  Eigen::VectorXd a_lwheel_total = desired.lwheel_contact.acc + params_.Kp_motion * err_lwheel + params_.Kd_motion * err_lwheel_vel;
-  Eigen::VectorXd a_rwheel_total = desired.rwheel_contact.acc + params_.Kp_motion * err_rwheel + params_.Kd_motion * err_rwheel_vel;
+  Eigen::VectorXd a_lwheel_total = desired.lwheel_contact.acc + params_.Kp_wheel * err_lwheel + params_.Kd_wheel * err_lwheel_vel;
+  Eigen::VectorXd a_rwheel_total = desired.rwheel_contact.acc + params_.Kp_wheel * err_rwheel + params_.Kd_wheel * err_rwheel_vel;
   Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_motion * err_base_orientation + params_.Kd_motion * err_base_orientation_vel;
   
 
@@ -259,8 +270,6 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
   Eigen::VectorXd f_acc = Eigen::VectorXd::Zero(6 + n_joints_);
 
-
-  // sample_time_ = 1;
 
   H_acc += params_.weight_q_ddot * Eigen::MatrixXd::Identity(6 + n_joints_, 6 + n_joints_);
   H_acc += params_.weight_com * (J_com.transpose() * J_com);
@@ -271,6 +280,7 @@ WholeBodyController::compute_inverse_dynamics(
   H_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       std::pow(sample_time_, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
 
+
   f_acc += params_.weight_com * J_com.transpose() * (a_com_drift - a_com_total);
   f_acc += params_.weight_lwheel * J_left_wheel_.transpose() * (a_lwheel_drift - a_lwheel_total);
   f_acc += params_.weight_rwheel * J_right_wheel_.transpose() * (a_rwheel_drift - a_rwheel_total);
@@ -280,7 +290,8 @@ WholeBodyController::compute_inverse_dynamics(
       sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
 
-  
+
+  ///-------------------*****--------------------///
 
   auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(n_joints_);
   auto q_jnt_dot_max = robot_model_.velocityLimit.tail(n_joints_);
@@ -294,12 +305,15 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd d_max_acc(2 * n_joints_);
   C_acc.rightCols(n_joints_).topRows(n_joints_).diagonal().setConstant(sample_time_);
   C_acc.rightCols(n_joints_).bottomRows(n_joints_).diagonal().setConstant(std::pow(sample_time_, 2.0) / 2.0);
-  d_min_acc << q_jnt_dot_min - qdot_current, q_jnt_min - q_current - sample_time_ * qdot_current;
-  d_max_acc << q_jnt_dot_max - qdot_current, q_jnt_max - q_current - sample_time_ * qdot_current;
+  d_min_acc << q_jnt_dot_min - qdot_joint, q_jnt_min - q_joint - sample_time_ * qdot_joint;
+  d_max_acc << q_jnt_dot_max - qdot_joint, q_jnt_max - q_joint - sample_time_ * qdot_joint;
 
   C_acc *= 0.0;       // occhio C_acc rompe il codice !!!!
   d_min_acc *= 0.0;
   d_max_acc *= 0.0;
+
+  ///-------------------*****--------------------///
+
 
   Eigen::MatrixXd M = pinocchio::crba(robot_model_, robot_data_, q);
   // We need to do this since the inertia matrix in Pinocchio is only upper triangular
@@ -308,7 +322,8 @@ WholeBodyController::compute_inverse_dynamics(
 
 
   // Computing Coriolis, centrifugal and gravitational effects
-  const auto& c = pinocchio::rnea(robot_model_, robot_data_, q, qdot, Eigen::VectorXd::Zero(6 + n_joints_));
+  auto& c = pinocchio::rnea(robot_model_, robot_data_, q, qdot, Eigen::VectorXd::Zero(6 + n_joints_));
+
 
 
   Eigen::MatrixXd Jlu = J_left_contact.block(0,0,3,6);
@@ -404,7 +419,22 @@ WholeBodyController::compute_inverse_dynamics(
   A_dyn << Mu, -Jlu.transpose() , -Jru.transpose() ;
   
 
-  
+  // Eigen::VectorXd e2 = Eigen::Vector3d(0,1,0);
+  // Eigen::MatrixXd A_wheels = Eigen::MatrixXd::Zero(2, 6 + n_joints_ );
+  // A_wheels.block(0, 0, 1, 6 + n_joints_) = e2.transpose() *  J_left_wheel_.bottomRows(3);
+  // A_wheels.block(1, 0, 1, 6 + n_joints_) = e2.transpose() *  J_right_wheel_.bottomRows(3);
+  // Eigen::VectorXd b_wheels = Eigen::VectorXd::Zero(2);
+  // b_wheels << -e2.transpose() *J_left_wheel_dot_.bottomRows(3) * qdot - 500 * qdot_joint(3), -e2.transpose() *J_right_wheel_dot_.bottomRows(3) * qdot - 500 * qdot_joint(7);
+
+  // Eigen::MatrixXd A = Eigen::MatrixXd::Zero(A_acc.rows() + A_no_contact.rows() + A_wheels.rows() + A_dyn.rows(), n_wbc_variables_);
+  // A.block(0, 0, A_acc.rows(), A_acc.cols()) = A_acc;
+  // A.block(A_acc.rows(), A_acc.cols(), A_no_contact.rows(), A_no_contact.cols()) = A_no_contact;
+  // A.block(A_acc.rows() + A_no_contact.rows(), 0, A_wheels.rows(), A_wheels.cols()) = A_wheels;
+  // A.bottomRows(A_dyn.rows()) = A_dyn;
+  // Eigen::VectorXd b(b_acc.rows() + b_no_contact.rows() + b_wheels.rows() + b_dyn.rows());
+  // b << b_acc, b_no_contact, b_wheels, b_dyn;
+
+
   // Build A and b matrices
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(A_acc.rows() + A_no_contact.rows() + A_dyn.rows(), n_wbc_variables_);
   A.block(0, 0, A_acc.rows(), A_acc.cols()) = A_acc;
@@ -443,16 +473,13 @@ WholeBodyController::compute_inverse_dynamics(
   
   
 
-  // A *= 0.0;
-  // b *= 0.0;
-  // C *= 0.0;
-  // d_min *= 0.0;  
-  // d_max *= 0.0;
-  // H.diagonal().array() += 2.0;
   
   
   // std::cout << "err_posture" << err_posture << std::endl;
   std::cout << "err_com" << err_com << std::endl;
+  std::cout << "err_rwheel" << err_rwheel << std::endl;
+  std::cout << "err_lwheel" << err_lwheel << std::endl;
+  std::cout << "err_posture" << err_posture << std::endl;
 
 
 
@@ -475,8 +502,10 @@ WholeBodyController::compute_inverse_dynamics(
   std::cout << "computed solution" << solution << std::endl;
 
 
-  
+  // std::cout << " qdot" << qdot << std::endl;
 
+
+  
 
   // Eigen::VectorXd r_val = J_right_contact_v * q_ddot + J_right_contact_v_dot * qdot + params_.gamma * J_right_contact_v * qdot;
   // Eigen::VectorXd l_val = J_left_contact_v * q_ddot + J_left_contact_v_dot * qdot + params_.gamma * J_left_contact_v * qdot;

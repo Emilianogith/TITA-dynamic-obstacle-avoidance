@@ -27,6 +27,9 @@ struct WholeBodyControllerParams {
   double Kp_regulation;
   double Kd_regulation;
 
+  double Kp_wheel;
+  double Kd_wheel;
+
   double weight_q_ddot;
   double weight_com;
   double weight_lwheel;
