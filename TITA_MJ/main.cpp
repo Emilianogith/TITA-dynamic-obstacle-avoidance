@@ -5,7 +5,7 @@
 
 // #include <mujoco/mujoco.h>
 
-#include <WholeBodyController.hpp>
+#include <WalkingManager.hpp>
 #include "MujocoUI.hpp"
 
 
@@ -80,53 +80,14 @@ int main() {
   }
 
 
-  // Controller:
+  // Walking Manager:
   labrob::RobotState initial_robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  std::shared_ptr<labrob::WholeBodyController> whole_body_controller_ptr = std::make_shared<labrob::WholeBodyController>(
-      initial_robot_state, armatures
-  );
-
-
-  // Desired configuration:
-  labrob::DesiredConfiguration des_configuration;
-  des_configuration.qjnt = Eigen::VectorXd::Zero(mj_model_ptr->nu);
-  des_configuration.qjnt << 
-    0.0,   // joint_left_leg_1
-    0.5,   // joint_left_leg_2
-    -1.0,   // joint_left_leg_3
-    0.0,   // joint_left_leg_4
-    0.0,   // joint_right_leg_1
-    0.5,   // joint_right_leg_2
-    -1.0,   // joint_right_leg_3
-    0.0;   // joint_right_leg_4
-  des_configuration.qjntdot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
-  des_configuration.qjntddot = Eigen::VectorXd::Zero(mj_model_ptr->nu);
-  // des_configuration.position = Eigen::Vector3d(0.0, 0.0, 0.2);
-  // des_configuration.orientation = Eigen::Quaterniond::Identity();
-  // des_configuration.linear_velocity = Eigen::Vector3d::Zero();
-  // des_configuration.angular_velocity = Eigen::Vector3d::Zero();
-  des_configuration.com.pos = Eigen::Vector3d(0.0, 0.0, 0.41);  
-  des_configuration.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
-  des_configuration.com.acc = Eigen::Vector3d::Zero();
-  des_configuration.lwheel_contact.pos.p = Eigen::Vector3d(0.0, 0.27, 0.095);
-  des_configuration.lwheel_contact.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
-  // des_configuration.lwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
-  des_configuration.lwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
-  des_configuration.lwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel_contact.pos.p = Eigen::Vector3d(0.0, -0.27, 0.095);
-  des_configuration.rwheel_contact.pos.R = Eigen::Matrix3d::Identity();
-  // des_configuration.rwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
-  des_configuration.rwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
-  des_configuration.rwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
-  des_configuration.base_link.pos =Eigen::Matrix3d::Identity();
-  // des_configuration.base_link.pos << 0,-1,0,  1,0,0,  0,0,1;
-  des_configuration.base_link.vel = Eigen::Vector3d::Zero();
-  des_configuration.base_link.acc = Eigen::Vector3d::Zero();
-  des_configuration.in_contact = false;
+  labrob::WalkingManager walking_manager;
+  walking_manager.init(initial_robot_state, armatures);
 
 
 
-  // zero gravity
+  // // zero gravity
   // mj_model_ptr->opt.gravity[0] = 0.0;
   // mj_model_ptr->opt.gravity[1] = 0.0;
   // mj_model_ptr->opt.gravity[2] = 0.0;
@@ -152,6 +113,9 @@ int main() {
 
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
+
+      auto start_time_controller = std::chrono::high_resolution_clock::now();
+
       labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
       
 
@@ -166,8 +130,8 @@ int main() {
 
       // WBC
       labrob::JointCommand joint_command;
-      joint_command = whole_body_controller_ptr->compute_inverse_dynamics(robot_state, des_configuration);
-      // walking_manager.update(robot_state, joint_command);
+      // joint_command = whole_body_controller_ptr->compute_inverse_dynamics(robot_state, des_configuration);
+      walking_manager.update(robot_state, joint_command);
       
       
       if (first_frame == true) {break;}
@@ -198,7 +162,10 @@ int main() {
         };
         ++count;
       }
-      
+
+      auto end_time_controller = std::chrono::high_resolution_clock::now();
+      auto controller_period = std::chrono::duration_cast<std::chrono::microseconds>(end_time_controller - start_time_controller).count();
+      std::cout << "controller_period: " << controller_period << " us" << std::endl;
     }
 
     // Fine misurazione del tempo

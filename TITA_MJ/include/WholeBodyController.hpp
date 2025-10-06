@@ -51,8 +51,11 @@ struct WholeBodyControllerParams {
 
 class WholeBodyController {
  public:
-  WholeBodyController(      const labrob::RobotState& initial_robot_state,
-                            std::map<std::string, double>& armature);
+  WholeBodyController(const WholeBodyControllerParams& params,
+                      const pinocchio::Model& robot_model,
+                      const labrob::RobotState& initial_robot_state,
+                      double sample_time,
+                      std::map<std::string, double>& armature);
 
   labrob::JointCommand
   compute_inverse_dynamics(

@@ -27,6 +27,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SE3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WholeBodyController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp
 )
 target_include_directories(UtilsLib
   PUBLIC
