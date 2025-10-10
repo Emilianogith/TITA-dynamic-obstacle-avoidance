@@ -29,8 +29,6 @@ robot_state_to_pinocchio_joint_velocity(
     const labrob::RobotState& robot_state
 );
 
-Eigen::Matrix3d skew(const Eigen::Vector3d &v);
-
 RobotState robot_state_from_mujoco(mjModel* m, mjData* d);
 
 Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);

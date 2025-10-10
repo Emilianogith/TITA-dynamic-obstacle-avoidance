@@ -22,13 +22,6 @@ int main() {
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
-  // print the joint names
-  // std::cout << "Total number of generalized variables:" << mj_model_ptr->nv << std::endl;
-//   for (int j = 0; j < mj_model_ptr->njnt; ++j) {
-//     std::cout << mj_model_ptr->names + mj_model_ptr->name_jntadr[j] 
-//               << " → qpos[" << mj_model_ptr->jnt_qposadr[j] << "]" << std::endl;
-// }
-
 
   // log files
   std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
@@ -37,8 +30,8 @@ int main() {
 
   // Init robot posture:
   mjtNum joint_left_leg_1_init = 0.0;
-  mjtNum joint_left_leg_2_init = 0.5;
-  mjtNum joint_left_leg_3_init = -1.0;
+  mjtNum joint_left_leg_2_init = 0.5;   // 0.25; (up-position)
+  mjtNum joint_left_leg_3_init = -1.0;  // -0.5; (up-position)
   mjtNum joint_left_leg_4_init = 0.0;
   mjtNum joint_right_leg_1_init = 0.0;
   mjtNum joint_right_leg_2_init = 0.5;
@@ -47,9 +40,9 @@ int main() {
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399 + 0.05;  //- 0.3 ;                                   // z
+  mj_data_ptr->qpos[2] = 0.399 + 0.05; // +0.02;(up-position) //-0.3;(upside-down-position) // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
-  mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down                                    // ε_x
+  mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down               // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
   mj_data_ptr->qpos[6] = 0.0;                                     // ε_z
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "joint_left_leg_1")]] = joint_left_leg_1_init;
@@ -64,13 +57,8 @@ int main() {
   mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * mj_model_ptr->nq);
   memcpy(qpos0, mj_data_ptr->qpos, mj_model_ptr->nq * sizeof(mjtNum));
   
-  
-  // Debug
-  // for (int i = 0; i <mj_model_ptr->nq ; ++i) {
-  //     std::cout << "Value for the joint" << i << " " << mj_data_ptr->qpos[i] << std::endl;
-  //   }
-  mj_step1(mj_model_ptr, mj_data_ptr);
-  
+
+  // extracting armatures values from the simulation
   std::map<std::string, double> armatures;
   for (int i = 0; i < mj_model_ptr->nu; ++i) {
     int joint_id = mj_model_ptr->actuator_trnid[i * 2];
@@ -86,7 +74,6 @@ int main() {
   walking_manager.init(initial_robot_state, armatures);
 
 
-
   // // zero gravity
   // mj_model_ptr->opt.gravity[0] = 0.0;
   // mj_model_ptr->opt.gravity[1] = 0.0;
@@ -96,86 +83,71 @@ int main() {
   // Mujoco UI
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
-  static int framerate = 60.0;
+  double dt = mj_model_ptr->opt.timestep;   // simulation timestep
+  std::cout<< "simulation dt: " << dt << std::endl;
+  std::cout<< "simulation freq: " << 1.0/dt << std::endl;
 
-
-  // slow down:
-  bool slow_down = false;
+  // static int framerate = 60.0;
   bool first_frame = false;
-  int count = 0;
 
-  mjtNum initial_simulation_time = mj_data_ptr->time;
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
-    auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time = std::chrono::high_resolution_clock::now();
 
-    mjtNum simstart = mj_data_ptr->time;
-    while( mj_data_ptr->time - simstart < 1.0/framerate ) {
+  mjtNum simstart = mj_data_ptr->time;
+  // while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
 
-      auto start_time_controller = std::chrono::high_resolution_clock::now();
+  labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  
+  // Walking manager
+  labrob::JointCommand joint_command;
+  walking_manager.update(robot_state, joint_command);
+  
 
-      labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-      
-
-      // if (mj_data_ptr->time - initial_simulation_time > 0.466){
-      // // des_configuration.qjnt(2) = 0.0; 
-      //   des_configuration.in_contact = true; 
-      
-      // }
-      // des_configuration.com.pos(0) = 0.0 + des_configuration.com.vel(0) * (mj_data_ptr->time - initial_simulation_time);
-      // std::cout << "des_configuration.com.pos " <<  des_configuration.com.pos << std::endl;
-      // std::cout << "Tempo " <<  mj_data_ptr->time - initial_simulation_time << std::endl;
-
-      // WBC
-      labrob::JointCommand joint_command;
-      // joint_command = whole_body_controller_ptr->compute_inverse_dynamics(robot_state, des_configuration);
-      walking_manager.update(robot_state, joint_command);
-      
-      
-      if (first_frame == true) {break;}
-
-      mj_step1(mj_model_ptr, mj_data_ptr);
-
-      for (int i = 0; i < mj_model_ptr->nu; ++i) {
-        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-        int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
-        mj_data_ptr->ctrl[i] = joint_command[joint_name];
-
-        joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
-        joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
-      }
-
-      mj_step2(mj_model_ptr, mj_data_ptr);
-
-      
-      joint_vel_log_file << std::endl;
-      joint_eff_log_file << std::endl;
-      
-     
-      // slow down the simulation:
-      if (slow_down == true) {
-        if (count<10){
-          break;
-        };
-        ++count;
-      }
-
-      auto end_time_controller = std::chrono::high_resolution_clock::now();
-      auto controller_period = std::chrono::duration_cast<std::chrono::microseconds>(end_time_controller - start_time_controller).count();
-      std::cout << "controller_period: " << controller_period << " us" << std::endl;
-    }
-
-    // Fine misurazione del tempo
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-
-    // Stampa del tempo di esecuzione
-    // std::cout << "Tempo di esecuzione del main: " << duration << " millisecondi" << std::endl;
-
+  mj_step1(mj_model_ptr, mj_data_ptr);
+  
+  if (first_frame == true) {
     mujoco_ui.render();
+    continue;
+  }
+
+  for (int i = 0; i < mj_model_ptr->nu; ++i) {
+    int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+    std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+    int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
+    mj_data_ptr->ctrl[i] = joint_command[joint_name];
+
+    joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
+    joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
+  }
+
+  mj_step2(mj_model_ptr, mj_data_ptr);
+
+  
+  joint_vel_log_file << std::endl;
+  joint_eff_log_file << std::endl;
+  
+  // }
+
+  double end_sim = mj_data_ptr->time;
+  // Fine misurazione del tempo
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+
+  // Stampa del tempo di esecuzione
+  std::cout << "Controller period: " << duration << " microseconds" << std::endl;
+  
+  
+  double sim_elapsed = end_sim - simstart;
+  double real_elapsed = std::chrono::duration<double>(end_time - start_time).count();
+  double RTF = sim_elapsed / real_elapsed;
+  std::cout << "Simulated time: " << sim_elapsed << std::endl;
+  std::cout << "Real time: " << real_elapsed << std::endl;
+  std::cout << "Real-time factor: " << RTF << std::endl;
+
+  mujoco_ui.render();
   }
 
   // Free memory (Mujoco):
@@ -187,4 +159,3 @@ int main() {
 
   return 0;
 }
-

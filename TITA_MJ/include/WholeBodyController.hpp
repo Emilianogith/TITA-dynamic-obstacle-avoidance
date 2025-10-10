@@ -87,6 +87,7 @@ class WholeBodyController {
 
   double sample_time_;
   double wheel_radius_;
+  double wheel_width_;
 
   WholeBodyControllerParams params_;
 

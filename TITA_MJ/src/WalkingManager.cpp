@@ -46,7 +46,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     int njnt = robot_model_.nv - 6;
 
     // TODO: init using node handle.
-    controller_frequency_ = 200;                        // CONTROLLA!!!!!!
+    controller_frequency_ = 100;                        // CONTROLLA!!!!!!
     controller_timestep_msec_ = 1000 / controller_frequency_;
     
 
@@ -67,15 +67,15 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // des_configuration_.orientation = Eigen::Quaterniond::Identity();
     // des_configuration_.linear_velocity = Eigen::Vector3d::Zero();
     // des_configuration_.angular_velocity = Eigen::Vector3d::Zero();
-    des_configuration_.com.pos = Eigen::Vector3d(0.0, 0.0, 0.41);  
+    des_configuration_.com.pos = Eigen::Vector3d(0.0, 0.0, 0.40);  
     des_configuration_.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
     des_configuration_.com.acc = Eigen::Vector3d::Zero();
-    des_configuration_.lwheel_contact.pos.p = Eigen::Vector3d(0.0, 0.27, 0.095);
+    des_configuration_.lwheel_contact.pos.p = Eigen::Vector3d(0.0, 0.28, 0.095);
     des_configuration_.lwheel_contact.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
     // des_configuration_.lwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
     des_configuration_.lwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
     des_configuration_.lwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
-    des_configuration_.rwheel_contact.pos.p = Eigen::Vector3d(0.0, -0.27, 0.095);
+    des_configuration_.rwheel_contact.pos.p = Eigen::Vector3d(0.0, -0.28, 0.095);
     des_configuration_.rwheel_contact.pos.R = Eigen::Matrix3d::Identity();
     // des_configuration_.rwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
     des_configuration_.rwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
@@ -106,28 +106,28 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 
     auto params = WholeBodyControllerParams::getDefaultParams();
-    // params.Kp_motion = 9000;                    //9000.0; 
-    // params.Kd_motion = 300;                     //300.0;   
-    // params.Kp_regulation = 1000.0;              //1000.0; 
-    // params.Kd_regulation = 50;                  //50.0;
+    // params.Kp_motion = 13000;                   
+    // params.Kd_motion = 300;                    
+    // params.Kp_regulation = 1000.0;            
+    // params.Kd_regulation = 50;                 
 
-    // params.Kp_wheel = 12000.0;                  //12000.0;
-    // params.Kd_wheel = 100.0;                    //100.0;
+    // params.Kp_wheel = 60000.0;                 
+    // params.Kd_wheel = 150.0;                 
 
-    // params.weight_q_ddot = 1e-4;                //1e-4;
-    // params.weight_com = 0.1;                    //0.1;
-    // params.weight_lwheel = 2.0;                 // 2.0;
-    // params.weight_rwheel = 2.0;                 // 2.0;
-    // params.weight_base = 0.05;                  //0.05; 
-    // params.weight_angular_momentum = 0.0001;    //0.0001;
-    // params.weight_regulation = 0.0;             // 1e-4  
+    // params.weight_q_ddot = 1e-4;                
+    // params.weight_com = 1.1;                    
+    // params.weight_lwheel = 2.0;                 
+    // params.weight_rwheel = 2.0;                 
+    // params.weight_base = 0.05;                  
+    // params.weight_angular_momentum = 0.0001;    
+    // params.weight_regulation = 0.0; 
 
-    // params.cmm_selection_matrix_x = 1e-6;       //1e-6;
-    // params.cmm_selection_matrix_y = 1e-6;       //1e-6;
-    // params.cmm_selection_matrix_z = 1e-4;       //1e-4;
+    // params.cmm_selection_matrix_x = 1e-6;       
+    // params.cmm_selection_matrix_y = 1e-6;       
+    // params.cmm_selection_matrix_z = 1e-4;
 
-    // params.gamma = 10;                          //10;
-    // params.mu = 0.5;                            //0.5;
+    // params.gamma = 10;                          
+    // params.mu = 0.5;                            
 
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
@@ -141,10 +141,11 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init log files:
     // TODO: may be better to use a proper logging system such as glog.
-    mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
+    // mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
     mpc_com_log_file_.open("/tmp/mpc_com.txt");
     mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
     com_log_file_.open("/tmp/com.txt");
+    zmp_log_file_.open("/tmp/zmp.txt");
 
     return true;
     }
@@ -204,30 +205,30 @@ void WalkingManager::update(
 
     const auto& v_CoM = robot_data_.vcom[0];
 
-    // --- Discrete LIP (per axis) via forward Euler
+    // Exact discretization
+    const double s = std::sinh(eta*Ts), c = std::cosh(eta*Ts);
     Eigen::Matrix2d A;
-    A << 1.0, Ts,
-        eta*eta*Ts, 1.0;
-
+    A << c, s/eta,
+        eta*s, c;
     Eigen::Vector2d B;
-    B << 0.0,
-        -eta*eta*Ts;
+    B << 1 - c,
+        -eta*s;
 
     // --- LQR weights
     Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
-    Q(0,0) = 10.0;        // pos weight                             //10.0
-    Q(1,1) = 10.0/(0.2*0.2);  // vel weight (example)               //10.0/(0.2*0.2)
-
+    Q(0,0) = 2250.0;           // pos weight                         
+    Q(1,1) = 2900.0;           // vel weight      
+    
     Eigen::Matrix<double,1,1> R;
-    R(0,0) = 15;       // input (ZMP) weight                        //15.0
+    R(0,0) = 2620;       // input (ZMP) weight                
 
-    Eigen::Matrix2d Qf;   // terminal cost (or P_infty if you have it)
-    Qf(0,0) = 100.0;        // pos weight                           //100.0
-    Qf(1,1) = 100.0/(0.2*0.2);  // vel weight (example)             //100.0
+    Eigen::Matrix2d Qf = Eigen::Matrix2d::Zero();   
+    Qf(0,0) = 2250.0;             // pos weight
+    Qf(1,1) = 2900.0;             // vel weight
 
     // --- Storage for TV-LQR
     std::vector<Eigen::Matrix2d> P(N+1);
-    std::vector<Eigen::RowVector2d> K(N); // each K[k] is 1x2
+    std::vector<Eigen::RowVector2d> K(N); 
 
     // Terminal condition
     P[N] = Qf;
@@ -249,10 +250,10 @@ void WalkingManager::update(
     double u_ref = c_star;   // steady-state ZMP = c*
 
     // --- Closed-loop rollout over the horizon (predict)
-    Eigen::VectorXd p_ZMP_des  = Eigen::VectorXd::Zero(N);
+    Eigen::VectorXd x_ZMP_des  = Eigen::VectorXd::Zero(N);
     Eigen::VectorXd v_ZMP_des  = Eigen::VectorXd::Zero(N);
     Eigen::VectorXd a_ZMP_des  = Eigen::VectorXd::Zero(N);
-    Eigen::VectorXd p_CoM_des = Eigen::VectorXd::Zero(N+1);
+    Eigen::VectorXd x_CoM_des = Eigen::VectorXd::Zero(N+1);
     Eigen::VectorXd v_CoM_des = Eigen::VectorXd::Zero(N+1);
     Eigen::VectorXd a_CoM_des  = Eigen::VectorXd::Zero(N+1);
 
@@ -261,54 +262,59 @@ void WalkingManager::update(
     double cdot_now = v_CoM(0);
     Eigen::Vector2d x(c_now, cdot_now);
 
-    p_CoM_des(0) = x(0);
+    x_CoM_des(0) = x(0);
     v_CoM_des(0) = x(1);
     a_CoM_des(0) = robot_data_.acom[0](0);
     
     double u_prev = des_configuration_.lwheel_contact.pos.p(0);
     double v_prev = des_configuration_.lwheel_contact.vel(0);
+    double a_prev = des_configuration_.lwheel_contact.acc(0);
 
     for (int k = 0; k < N; ++k) {
         Eigen::Vector2d e = x - x_ref;
         double u = u_ref - (K[k] * e)(0,0);     // optimal input at stage k
         // apply / predict
         x = A * x + B * u;
-        p_ZMP_des(k) = u;
-        v_ZMP_des(k) = (u - u_prev) / Ts;
-        a_ZMP_des(k) = (v_ZMP_des(k) - v_prev) / Ts;
+        x_ZMP_des(k) = u;
         
-        p_CoM_des(k+1) = x(0);
+        x_CoM_des(k+1) = x(0);
         v_CoM_des(k+1) = x(1);
         a_CoM_des(k+1) = eta*eta* (x(0) - u);
 
-        u_prev = u;
-        v_prev = v_ZMP_des(k);
+        // vel, acc derivation
+        const double vmax=1.0, amax=3.0, jmax=20.0; // tune
+        double u_rate = std::clamp((u - u_prev)/Ts, -vmax, vmax);
+        double u_lim  = u_prev + u_rate*Ts;
+
+        double v_cmd  = (u_lim - u_prev)/Ts;
+        double dv     = std::clamp(v_cmd - v_prev, -amax*Ts, amax*Ts);
+        double v_lim  = v_prev + dv;
+
+        double a_cmd  = (v_lim - v_prev)/Ts;
+        double da     = std::clamp(a_cmd - a_prev, -jmax*Ts, jmax*Ts);
+        double a_lim  = a_prev + da;
+
+        x_ZMP_des(k) = u_lim;  v_ZMP_des(k) = v_lim;  a_ZMP_des(k) = a_lim;
+        u_prev = u_lim;  v_prev = v_lim;  a_prev = a_lim;
     }
 
 
-    des_configuration_.com.pos(0) = p_CoM_des(0);  
-    des_configuration_.com.vel(0) = v_CoM_des(0);
-    des_configuration_.com.acc(0) = a_CoM_des(0); 
+    des_configuration_.com.pos(0) = x_CoM_des(1);  
+    des_configuration_.com.vel(0) = v_CoM_des(1);
+    des_configuration_.com.acc(0) = a_CoM_des(1); 
 
-    des_configuration_.lwheel_contact.pos.p = Eigen::Vector3d(p_ZMP_des(0), 0.27, 0.095);
+    des_configuration_.lwheel_contact.pos.p(0) = x_ZMP_des(0);
     des_configuration_.lwheel_contact.vel(0) = v_ZMP_des(0);
     des_configuration_.lwheel_contact.acc(0) = a_ZMP_des(0);
 
-    des_configuration_.rwheel_contact.pos.p = Eigen::Vector3d(p_ZMP_des(0), -0.27, 0.095);
+    des_configuration_.rwheel_contact.pos.p(0) = x_ZMP_des(0);
     des_configuration_.rwheel_contact.vel(0) = v_ZMP_des(0);
     des_configuration_.rwheel_contact.acc(0) = a_ZMP_des(0);
-
-
-
-    std::cout << "v_CoM_des " << v_CoM_des(0) << std::endl; 
-    std::cout << "v_ZMP_des " << v_ZMP_des(0) << std::endl;
 
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
 
    
-
-
 
     auto end_time = std::chrono::system_clock::now();
     auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -322,14 +328,13 @@ void WalkingManager::update(
     std::cout << "t_msec_ " << t_msec_ << std::endl;
 
     // Log:
-    // if (std::fabs(t_msec_ - 9375.0) < 0.5){
-    //     mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
-    //     mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
-    // }
-    mpc_com_log_file_ << p_CoM_des(0) << std::endl;
-    mpc_zmp_log_file_ << p_ZMP_des(0) << std::endl;
+    if (std::fabs(t_msec_ - 9360.0) < 0.5){
+        mpc_com_log_file_ << "t_msec_: " << t_msec_ << std::endl << x_CoM_des.transpose() << std::endl;
+        mpc_zmp_log_file_ << "t_msec_: " << t_msec_ << std::endl << x_ZMP_des.transpose() << std::endl;
+    }
 
     com_log_file_ << p_CoM.transpose() << std::endl;
+    zmp_log_file_ << x_ZMP_des(0) << std::endl;
 }
 
 

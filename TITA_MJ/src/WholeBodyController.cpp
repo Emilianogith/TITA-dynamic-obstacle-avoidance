@@ -6,16 +6,16 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 9000;                    //9000.0; 
+  params.Kp_motion = 13000;                   //13000.0; 
   params.Kd_motion = 300;                     //300.0;   
   params.Kp_regulation = 1000.0;              //1000.0; 
   params.Kd_regulation = 50;                  //50.0;
 
-  params.Kp_wheel = 12000.0;                  //12000.0;
-  params.Kd_wheel = 100.0;                    //100.0;
+  params.Kp_wheel = 60000.0;                  //60000.0;
+  params.Kd_wheel = 150.0;                    //150.0;
 
   params.weight_q_ddot = 1e-4;                //1e-4;
-  params.weight_com = 0.1;                    //0.1;
+  params.weight_com = 1.0;                    //1.0;
   params.weight_lwheel = 2.0;                 // 2.0;
   params.weight_rwheel = 2.0;                 // 2.0;
   params.weight_base = 0.05;                  //0.05; 
@@ -43,33 +43,6 @@ WholeBodyController::WholeBodyController(
     params_(params)
 {
 
-  // params_ = WholeBodyControllerParams::getDefaultParams();
-
-  // // Read URDF from file:
-  // std::string robot_description_filename = "../tita_description/tita.urdf";
-
-  // // Build Pinocchio model and data from URDF:
-  // pinocchio::Model full_robot_model;
-  // pinocchio::JointModelFreeFlyer root_joint;
-  // pinocchio::urdf::buildModel(
-  //   robot_description_filename,
-  //   root_joint,
-  //   full_robot_model
-  // );
-  // const std::vector<std::string> joint_to_lock_names{};
-  // std::vector<pinocchio::JointIndex> joint_ids_to_lock;
-  // for (const auto& joint_name : joint_to_lock_names) {
-  //   if (full_robot_model.existJointName(joint_name)) {
-  //     joint_ids_to_lock.push_back(full_robot_model.getJointId(joint_name));
-  //   }
-  // }
-
-  // robot_model_ = pinocchio::buildReducedModel(
-  //     full_robot_model,
-  //     joint_ids_to_lock,
-  //     pinocchio::neutral(full_robot_model)
-  // );
-
   robot_data_ = pinocchio::Data(robot_model_);
 
   right_leg4_idx_ = robot_model_.getFrameId("right_leg_4");
@@ -77,6 +50,7 @@ WholeBodyController::WholeBodyController(
   base_link_idx_ = robot_model_.getFrameId("base_link");
 
   wheel_radius_ = 0.0925;
+  wheel_width_  = 0.017;
 
   J_right_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_left_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -87,7 +61,7 @@ WholeBodyController::WholeBodyController(
   J_base_link_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 
   n_joints_ = robot_model_.nv - 6;
-  n_contacts_ = 1;
+  n_contacts_ = 2;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 3 + 2 * 3 * n_contacts_;
   n_wbc_inequalities_ = 2 * 4 * n_contacts_; //+ 2 * n_joints_ 
@@ -141,10 +115,10 @@ WholeBodyController::compute_inverse_dynamics(
   // J_right_contact
   Eigen::Vector3d right_rCP = labrob::get_rCP(r_wheel_center, r_wheel_R, wheel_radius_);
   Eigen::MatrixXd J_right_contact_v(3, robot_model_.nv);
-  J_right_contact_v = J_right_wheel_.topRows(3) - skew(right_rCP) * J_right_wheel_.bottomRows(3);
+  J_right_contact_v = J_right_wheel_.topRows(3) - pinocchio::skew(right_rCP) * J_right_wheel_.bottomRows(3);
   Eigen::Vector3d w_r = J_right_wheel_.bottomRows<3>() * qdot;
   Eigen::MatrixXd J_right_contact_v_dot(3, robot_model_.nv);
-  J_right_contact_v_dot = J_right_wheel_dot_.topRows(3) - skew(w_r.cross(right_rCP)) * J_right_wheel_.bottomRows(3)- skew(right_rCP) * J_right_wheel_dot_.bottomRows(3);
+  J_right_contact_v_dot = J_right_wheel_dot_.topRows(3) - pinocchio::skew(w_r.cross(right_rCP)) * J_right_wheel_.bottomRows(3)- pinocchio::skew(right_rCP) * J_right_wheel_dot_.bottomRows(3);
   
   Eigen::MatrixXd J_right_contact(6, robot_model_.nv); 
   J_right_contact.topRows(3) = J_right_contact_v;
@@ -156,10 +130,10 @@ WholeBodyController::compute_inverse_dynamics(
   // J_left_contact
   Eigen::Vector3d left_rCP = labrob::get_rCP(l_wheel_center, l_wheel_R, wheel_radius_);
   Eigen::MatrixXd J_left_contact_v(3, robot_model_.nv);
-  J_left_contact_v = J_left_wheel_.topRows(3) - skew(left_rCP) * J_left_wheel_.bottomRows(3);
+  J_left_contact_v = J_left_wheel_.topRows(3) - pinocchio::skew(left_rCP) * J_left_wheel_.bottomRows(3);
   Eigen::Vector3d w_l = J_left_wheel_.bottomRows<3>() * qdot;
   Eigen::MatrixXd J_left_contact_v_dot(3, robot_model_.nv);
-  J_left_contact_v_dot = J_left_wheel_dot_.topRows(3) - skew(w_l.cross(left_rCP)) * J_left_wheel_.bottomRows(3)- skew(left_rCP) * J_left_wheel_dot_.bottomRows(3);
+  J_left_contact_v_dot = J_left_wheel_dot_.topRows(3) - pinocchio::skew(w_l.cross(left_rCP)) * J_left_wheel_.bottomRows(3)- pinocchio::skew(left_rCP) * J_left_wheel_dot_.bottomRows(3);
  
   Eigen::MatrixXd J_left_contact(6, robot_model_.nv);
   J_left_contact.topRows(3) = J_left_contact_v;
@@ -278,7 +252,7 @@ WholeBodyController::compute_inverse_dynamics(
   auto q_jnt_min = robot_model_.lowerPositionLimit.tail(n_joints_);
   auto q_jnt_max = robot_model_.upperPositionLimit.tail(n_joints_);
 
-  // RICONTROLLA C_ACC ROMPE IL CODICE
+  // RICONTROLLA C_ACC ROMPE IL CODICE (errore dovuto a sample_time non inizializzato)
   Eigen::MatrixXd C_acc = Eigen::MatrixXd::Zero(2 * n_joints_, 6 + n_joints_);
   Eigen::VectorXd d_min_acc(2 * n_joints_);
   Eigen::VectorXd d_max_acc(2 * n_joints_);
@@ -301,10 +275,10 @@ WholeBodyController::compute_inverse_dynamics(
   // Computing Coriolis, centrifugal and gravitational effects
   auto& c = pinocchio::rnea(robot_model_, robot_data_, q, qdot, Eigen::VectorXd::Zero(6 + n_joints_));
 
-  Eigen::MatrixXd Jlu = J_left_contact.block(0,0,3,6);                //6
-  Eigen::MatrixXd Jla = J_left_contact.block(0,6,3,n_joints_);
-  Eigen::MatrixXd Jru = J_right_contact.block(0,0,3,6);
-  Eigen::MatrixXd Jra = J_right_contact.block(0,6,3,n_joints_);
+  Eigen::MatrixXd Jlu = J_left_contact.block(0,0,6,6);                
+  Eigen::MatrixXd Jla = J_left_contact.block(0,6,6,n_joints_);
+  Eigen::MatrixXd Jru = J_right_contact.block(0,0,6,6);
+  Eigen::MatrixXd Jra = J_right_contact.block(0,6,6,n_joints_);
 
   Eigen::MatrixXd Mu = M.block(0,0,6,6+n_joints_);                // fb + n_joints
   Eigen::MatrixXd Ma = M.block(6,0,n_joints_,6+n_joints_);        // n_joints
@@ -316,7 +290,6 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::MatrixXd T_r(6, 3 * n_contacts_);
   Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
 
-  double wheel_width = 0.017;
   if (n_contacts_ == 1){
     std::vector<Eigen::Vector3d> pcis(1);
     pcis[0] <<  0.0,  0.0, 0.0;
@@ -335,8 +308,8 @@ WholeBodyController::compute_inverse_dynamics(
 
   } else if (n_contacts_ == 2) {
     std::vector<Eigen::Vector3d> pcis(2);
-    pcis[0] <<  0.0,  wheel_width / 2.0, 0.0;
-    pcis[1] <<  0.0, -wheel_width / 2.0, 0.0;
+    pcis[0] <<  0.0,  wheel_width_ / 2.0, 0.0;
+    pcis[1] <<  0.0, -wheel_width_ / 2.0, 0.0;
   
     std::vector<Eigen::Vector3d> pcis_l(2);
     std::vector<Eigen::Vector3d> pcis_r(2);
@@ -349,12 +322,11 @@ WholeBodyController::compute_inverse_dynamics(
           pinocchio::skew(pcis_l[0]), pinocchio::skew(pcis_l[1]);
     T_r << I3, I3,
           pinocchio::skew(pcis_r[0]), pinocchio::skew(pcis_r[1]);
-
   }
 
   
   // QP formulation
-  Eigen::MatrixXd H_force_one = 1e-9 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
+  Eigen::MatrixXd H_force_one = 1e-2 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
   Eigen::VectorXd f_force_one = Eigen::VectorXd::Zero(3 * n_contacts_);
 
   Eigen::VectorXd b_dyn = -cu;
@@ -407,24 +379,8 @@ WholeBodyController::compute_inverse_dynamics(
 
   // Floating base no actuation constraint
   Eigen::MatrixXd A_dyn(6, 6 + n_joints_ + 2 * 3 * n_contacts_);
-  A_dyn << Mu, -Jlu.transpose(), -Jru.transpose() ;                  // * T_l,  *T_r
+  A_dyn << Mu, -Jlu.transpose() * T_l, -Jru.transpose() * T_r;
   
-
-  // Eigen::VectorXd e2 = Eigen::Vector3d(0,1,0);
-  // Eigen::MatrixXd A_wheels = Eigen::MatrixXd::Zero(2, 6 + n_joints_ );
-  // A_wheels.block(0, 0, 1, 6 + n_joints_) = e2.transpose() *  J_left_wheel_.bottomRows(3);
-  // A_wheels.block(1, 0, 1, 6 + n_joints_) = e2.transpose() *  J_right_wheel_.bottomRows(3);
-  // Eigen::VectorXd b_wheels = Eigen::VectorXd::Zero(2);
-  // b_wheels << -e2.transpose() *J_left_wheel_dot_.bottomRows(3) * qdot - 500 * qdot_joint(3), -e2.transpose() *J_right_wheel_dot_.bottomRows(3) * qdot - 500 * qdot_joint(7);
-
-  // Eigen::MatrixXd A = Eigen::MatrixXd::Zero(A_acc.rows() + A_no_contact.rows() + A_wheels.rows() + A_dyn.rows(), n_wbc_variables_);
-  // A.block(0, 0, A_acc.rows(), A_acc.cols()) = A_acc;
-  // A.block(A_acc.rows(), A_acc.cols(), A_no_contact.rows(), A_no_contact.cols()) = A_no_contact;
-  // A.block(A_acc.rows() + A_no_contact.rows(), 0, A_wheels.rows(), A_wheels.cols()) = A_wheels;
-  // A.bottomRows(A_dyn.rows()) = A_dyn;
-  // Eigen::VectorXd b(b_acc.rows() + b_no_contact.rows() + b_wheels.rows() + b_dyn.rows());
-  // b << b_acc, b_no_contact, b_wheels, b_dyn;
-
 
   // Build A and b matrices
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(A_acc.rows() + A_no_contact.rows() + A_dyn.rows(), n_wbc_variables_);
@@ -444,8 +400,8 @@ WholeBodyController::compute_inverse_dynamics(
   for (int i = 0; i < n_contacts_; ++i) {
     C_force_right.block(4 * i, 3 * i, 4, 3) = C_force_block * current_rwheel_contact_pos.R.transpose();
   }
+
   // Build C and d matrices
-  
     // Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows(), n_wbc_variables_);
     // C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 2 * 3 * n_contacts_),
     //     Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + n_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * n_contacts_),
@@ -464,12 +420,10 @@ WholeBodyController::compute_inverse_dynamics(
   
   
 
-
-  // std::cout << "err_posture" << err_posture << std::endl;
   std::cout << "err_com" << err_com << std::endl;
   std::cout << "err_rwheel" << err_rwheel << std::endl;
   std::cout << "err_lwheel" << err_lwheel << std::endl;
-  std::cout << "err_posture" << err_posture << std::endl;
+  // std::cout << "err_posture" << err_posture << std::endl;
 
 
 
@@ -479,11 +433,11 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd flr = solution.tail(2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
-  Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * fl - Jra.transpose() * fr;  // * T_l,  *T_r
+  Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;  // * T_l,  *T_r
 
   
   // std::cout << "computed tau" << tau << std::endl;
-  std::cout << "computed solution" << solution << std::endl;
+  // std::cout << "computed solution" << solution << std::endl;
 
 
   // Eigen::VectorXd r_val = J_right_contact_v * q_ddot + J_right_contact_v_dot * qdot + params_.gamma * J_right_contact_v * qdot;
@@ -502,14 +456,13 @@ WholeBodyController::compute_inverse_dynamics(
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 
   // Stampa del tempo di esecuzione
-  // std::cout << "Tempo di esecuzione del controllore Whole Body: " << duration << " microsecondi" << std::endl;
+  std::cout << "Tempo di esecuzione del controllore Whole Body: " << duration << " microsecondi" << std::endl;
 
 
   JointCommand joint_command;
   for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_.njoints; ++joint_id) {
     const auto& joint_name = robot_model_.names[joint_id];
     joint_command[joint_name] = tau[joint_id - 2];
-    // joint_command[joint_name] = 0.0;
   }
   
   return joint_command;

@@ -35,10 +35,11 @@ private:
   double t_msec_ = 0;
 
   // Log files:
-  std::ofstream mpc_timings_log_file_;
+  // std::ofstream mpc_timings_log_file_;
   std::ofstream mpc_com_log_file_;
   std::ofstream mpc_zmp_log_file_;
   std::ofstream com_log_file_;
+  std::ofstream zmp_log_file_;
  
 
 }; 

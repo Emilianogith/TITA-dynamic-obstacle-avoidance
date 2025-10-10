@@ -65,15 +65,6 @@ robot_state_to_pinocchio_joint_velocity(
   return qdot;
 }
 
-Eigen::Matrix3d skew(const Eigen::Vector3d &v) {
-    Eigen::Matrix3d m;
-    m <<     0, -v.z(),  v.y(),
-          v.z(),     0, -v.x(),
-         -v.y(),  v.x(),     0;
-    return m;
-}
-
-
 
 RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
 labrob::RobotState robot_state;
