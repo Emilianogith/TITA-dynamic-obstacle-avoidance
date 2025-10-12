@@ -30,18 +30,9 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
         pinocchio::neutral(full_robot_model)
     );
     robot_data_ = pinocchio::Data(robot_model_);
-
-  
-
-    // auto q_init = robot_state_to_pinocchio_joint_configuration(
-    //     robot_model_,
-    //     initial_robot_state
-    // );
-    // pinocchio::forwardKinematics(robot_model_, robot_data_, q_init);
-    // pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q_init);
-    // pinocchio::framesForwardKinematics(robot_model_, robot_data_, q_init);
     
-
+    right_leg4_idx_ = robot_model_.getFrameId("right_leg_4");
+    left_leg4_idx_ = robot_model_.getFrameId("left_leg_4");
 
     int njnt = robot_model_.nv - 6;
 
@@ -90,7 +81,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
   
 
     // Init MPC:
-    Eigen::Vector3d p_CoM = robot_data_.com[0];
+    // Eigen::Vector3d p_CoM = robot_data_.com[0];
     // int64_t mpc_prediction_horizon_msec = 2000;
     // int64_t mpc_timestep_msec = 100;
     // double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
@@ -118,7 +109,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // params.weight_com = 1.1;                    
     // params.weight_lwheel = 2.0;                 
     // params.weight_rwheel = 2.0;                 
-    // params.weight_base = 0.05;                  
+    params.weight_base = 0.1;                  
     // params.weight_angular_momentum = 0.0001;    
     // params.weight_regulation = 0.0; 
 
@@ -137,15 +128,20 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
         armatures
     );
 
-
-
     // Init log files:
     // TODO: may be better to use a proper logging system such as glog.
     // mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
     mpc_com_log_file_.open("/tmp/mpc_com.txt");
     mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
-    com_log_file_.open("/tmp/com.txt");
-    zmp_log_file_.open("/tmp/zmp.txt");
+    state_log_file_.open("/tmp/state_log_file.txt");
+    state_log_file_ << "time,"
+         << "com_x,com_y,com_z,"
+         << "com_x_des,com_y_des,com_z_des,"
+         << "wheel_l_x,wheel_l_y,wheel_l_z,"
+         << "wheel_l_x_des,wheel_l_y_des,wheel_l_z_des,"
+         << "wheel_r_x,wheel_r_y,wheel_r_z,"
+         << "wheel_r_x_des,wheel_r_y_des,wheel_r_z_des"
+         << std::endl;
 
     return true;
     }
@@ -168,7 +164,7 @@ void WalkingManager::update(
     // //       computeJointJacobians.
     // pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
     // pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
-    // pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+    pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
     pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
     const auto& centroidal_momentum_matrix = pinocchio::ccrba(
         robot_model_,
@@ -179,6 +175,8 @@ void WalkingManager::update(
     // auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
 
     const auto& p_CoM = robot_data_.com[0];
+    const auto& r_wheel_center = robot_data_.oMf[right_leg4_idx_].translation();
+    const auto& l_wheel_center = robot_data_.oMf[left_leg4_idx_].translation();
     // const auto& a_CoM_drift = robot_data_.acom[0];
     // const auto& J_CoM = robot_data_.Jcom;
     // const auto& T_torso = robot_data_.oMf[torso_idx_];
@@ -303,18 +301,19 @@ void WalkingManager::update(
     des_configuration_.com.vel(0) = v_CoM_des(1);
     des_configuration_.com.acc(0) = a_CoM_des(1); 
 
-    des_configuration_.lwheel_contact.pos.p(0) = x_ZMP_des(0);
+    des_configuration_.lwheel_contact.pos.p = Eigen::Vector3d(x_ZMP_des(0), p_CoM(1) + 0.28, 0.095);
     des_configuration_.lwheel_contact.vel(0) = v_ZMP_des(0);
     des_configuration_.lwheel_contact.acc(0) = a_ZMP_des(0);
 
-    des_configuration_.rwheel_contact.pos.p(0) = x_ZMP_des(0);
+    des_configuration_.rwheel_contact.pos.p = Eigen::Vector3d(x_ZMP_des(0), p_CoM(1) - 0.28, 0.095);
     des_configuration_.rwheel_contact.vel(0) = v_ZMP_des(0);
     des_configuration_.rwheel_contact.acc(0) = a_ZMP_des(0);
 
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
 
-   
+
+
 
     auto end_time = std::chrono::system_clock::now();
     auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -333,9 +332,15 @@ void WalkingManager::update(
         mpc_zmp_log_file_ << "t_msec_: " << t_msec_ << std::endl << x_ZMP_des.transpose() << std::endl;
     }
 
-    com_log_file_ << p_CoM.transpose() << std::endl;
-    zmp_log_file_ << x_ZMP_des(0) << std::endl;
+    state_log_file_
+        << t_msec_ << ","
+        << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","
+        << des_configuration_.com.pos(0) << "," << des_configuration_.com.pos(1) << "," << des_configuration_.com.pos(2) << ","
+        << l_wheel_center(0) << "," << l_wheel_center(1) << "," << l_wheel_center(2) << ","
+        << des_configuration_.lwheel_contact.pos.p(0) << "," << des_configuration_.lwheel_contact.pos.p(1) << "," << des_configuration_.lwheel_contact.pos.p(2) << ","
+        << r_wheel_center(0) << "," << r_wheel_center(1) << "," << r_wheel_center(2) << ","
+        << des_configuration_.rwheel_contact.pos.p(0) << "," << des_configuration_.rwheel_contact.pos.p(1) << "," << des_configuration_.rwheel_contact.pos.p(2)
+        << std::endl;
 }
-
 
 } // end namespace labrob

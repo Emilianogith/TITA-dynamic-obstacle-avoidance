@@ -24,6 +24,8 @@ class WalkingManager {
  protected:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
+  pinocchio::FrameIndex right_leg4_idx_;
+  pinocchio::FrameIndex left_leg4_idx_;
 
   double controller_timestep_msec_;
 
@@ -38,9 +40,7 @@ private:
   // std::ofstream mpc_timings_log_file_;
   std::ofstream mpc_com_log_file_;
   std::ofstream mpc_zmp_log_file_;
-  std::ofstream com_log_file_;
-  std::ofstream zmp_log_file_;
- 
+  std::ofstream state_log_file_;
 
 }; 
 

@@ -9,6 +9,23 @@
 #include "MujocoUI.hpp"
 
 
+void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep_counter){
+  double point[3]{0.0, 0.0, 0.0};
+  double force[3] {110.0, -100.0, 110.0}; // {110.0, -100.0, 110.0}; {-200.0, -160.0, -300.0};
+  double torque[3]{0.0, 0.0, 0.0};
+
+  int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "base_link");
+
+  if (timestep_counter == 2000) {
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+  if (timestep_counter == 2100) {
+    force[0] = -force[0];
+    force[1] = -force[1];
+    force[2] = -force[2];
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+}
 
 int main() {
   // Load MJCF (for Mujoco):
@@ -87,8 +104,10 @@ int main() {
   std::cout<< "simulation dt: " << dt << std::endl;
   std::cout<< "simulation freq: " << 1.0/dt << std::endl;
 
-  // static int framerate = 60.0;
+  static int framerate = 60.0;
   bool first_frame = false;
+
+  int timestep_counter = 0;
 
 
   // Simulation loop:
@@ -97,39 +116,43 @@ int main() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   mjtNum simstart = mj_data_ptr->time;
-  // while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
+  while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
 
-  labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  
-  // Walking manager
-  labrob::JointCommand joint_command;
-  walking_manager.update(robot_state, joint_command);
-  
+    labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+    
+    // Walking manager
+    labrob::JointCommand joint_command;
+    walking_manager.update(robot_state, joint_command);
 
-  mj_step1(mj_model_ptr, mj_data_ptr);
-  
-  if (first_frame == true) {
-    mujoco_ui.render();
-    continue;
-  }
+    // apply a disturbance
+    apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
+    ++timestep_counter;
+    
 
-  for (int i = 0; i < mj_model_ptr->nu; ++i) {
-    int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-    std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-    int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
-    mj_data_ptr->ctrl[i] = joint_command[joint_name];
+    mj_step1(mj_model_ptr, mj_data_ptr);
+    
+    if (first_frame == true) {
+      mujoco_ui.render();
+      continue;
+    }
 
-    joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
-    joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
-  }
+    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+      int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+      std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+      int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
+      mj_data_ptr->ctrl[i] = joint_command[joint_name];
 
-  mj_step2(mj_model_ptr, mj_data_ptr);
+      joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
+      joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
+    }
 
-  
-  joint_vel_log_file << std::endl;
-  joint_eff_log_file << std::endl;
-  
-  // }
+    mj_step2(mj_model_ptr, mj_data_ptr);
+
+    
+    joint_vel_log_file << std::endl;
+    joint_eff_log_file << std::endl;
+    
+    }
 
   double end_sim = mj_data_ptr->time;
   // Fine misurazione del tempo
