@@ -57,7 +57,7 @@ int main() {
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399 + 0.05; // +0.02;(up-position) //-0.3;(upside-down-position) // z
+  mj_data_ptr->qpos[2] = 0.399 + 0.05 - 0.005; // +0.02;(up-position) //-0.3;(upside-down-position) // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
   mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down               // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y

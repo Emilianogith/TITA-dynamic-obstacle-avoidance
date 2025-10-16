@@ -11,14 +11,14 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kp_regulation = 1000.0;              //1000.0; 
   params.Kd_regulation = 50;                  //50.0;
 
-  params.Kp_wheel = 60000.0;                  //60000.0;
-  params.Kd_wheel = 150.0;                    //150.0;
+  params.Kp_wheel = 90000.0;                  //60000.0;
+  params.Kd_wheel = 200.0;                    //150.0;
 
   params.weight_q_ddot = 1e-4;                //1e-4;
   params.weight_com = 1.0;                    //1.0;
   params.weight_lwheel = 2.0;                 // 2.0;
   params.weight_rwheel = 2.0;                 // 2.0;
-  params.weight_base = 0.05;                  //0.05; 
+  params.weight_base = 0.1;                  //0.05; 
   params.weight_angular_momentum = 0.0001;    //0.0001;
   params.weight_regulation = 0.0;             // 1e-4  
 
@@ -64,7 +64,7 @@ WholeBodyController::WholeBodyController(
   n_contacts_ = 2;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 3 + 2 * 3 * n_contacts_;
-  n_wbc_inequalities_ = 2 * 4 * n_contacts_; //+ 2 * n_joints_ 
+  n_wbc_inequalities_ = 2 * 4 * n_contacts_+ 2 * n_joints_;
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 2;
@@ -245,14 +245,15 @@ WholeBodyController::compute_inverse_dynamics(
       sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
 
-
-  ///-------------------*****--------------------///
+  //Joint limits constraints
   auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(n_joints_);
   auto q_jnt_dot_max = robot_model_.velocityLimit.tail(n_joints_);
   auto q_jnt_min = robot_model_.lowerPositionLimit.tail(n_joints_);
   auto q_jnt_max = robot_model_.upperPositionLimit.tail(n_joints_);
 
-  // RICONTROLLA C_ACC ROMPE IL CODICE (errore dovuto a sample_time non inizializzato)
+  auto tau_min = -robot_model_.effortLimit.tail(n_joints_);
+  auto tau_max = robot_model_.effortLimit.tail(n_joints_);
+
   Eigen::MatrixXd C_acc = Eigen::MatrixXd::Zero(2 * n_joints_, 6 + n_joints_);
   Eigen::VectorXd d_min_acc(2 * n_joints_);
   Eigen::VectorXd d_max_acc(2 * n_joints_);
@@ -260,11 +261,6 @@ WholeBodyController::compute_inverse_dynamics(
   C_acc.rightCols(n_joints_).bottomRows(n_joints_).diagonal().setConstant(std::pow(sample_time_, 2.0) / 2.0);
   d_min_acc << q_jnt_dot_min - qdot_joint, q_jnt_min - q_joint - sample_time_ * qdot_joint;
   d_max_acc << q_jnt_dot_max - qdot_joint, q_jnt_max - q_joint - sample_time_ * qdot_joint;
-
-  C_acc *= 0.0;       // occhio C_acc rompe il codice !!!!
-  d_min_acc *= 0.0;
-  d_max_acc *= 0.0;
-  ///-------------------*****--------------------///
 
 
   Eigen::MatrixXd M = pinocchio::crba(robot_model_, robot_data_, q);
@@ -402,21 +398,15 @@ WholeBodyController::compute_inverse_dynamics(
   }
 
   // Build C and d matrices
-    // Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows(), n_wbc_variables_);
-    // C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 2 * 3 * n_contacts_),
-    //     Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + n_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * n_contacts_),
-    //     Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + n_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * n_contacts_), C_force_right;
-    // Eigen::VectorXd d_min(d_min_acc.rows() + 2 * d_min_force_one.rows());
-    // Eigen::VectorXd d_max(d_max_acc.rows() + 2 * d_max_force_one.rows());
-    // d_min << d_min_acc, d_min_force_one, d_min_force_one;
-    // d_max << d_max_acc, d_max_force_one, d_max_force_one;
-  Eigen::MatrixXd C(2 * C_force_left.rows(), n_wbc_variables_);
-  C << Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + n_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * n_contacts_),
-  Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + n_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * n_contacts_), C_force_right;
-  Eigen::VectorXd d_min(2 * d_min_force_one.rows());
-  Eigen::VectorXd d_max(2 * d_max_force_one.rows());
-  d_min << d_min_force_one, d_min_force_one;
-  d_max << d_max_force_one, d_max_force_one;
+  Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows(), n_wbc_variables_);
+  C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 2 * 3 * n_contacts_),
+      Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + n_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * n_contacts_),
+      Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + n_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * n_contacts_), C_force_right;
+  Eigen::VectorXd d_min(d_min_acc.rows() + 2 * d_min_force_one.rows());
+  Eigen::VectorXd d_max(d_max_acc.rows() + 2 * d_max_force_one.rows());
+  d_min << d_min_acc, d_min_force_one, d_min_force_one;
+  d_max << d_max_acc, d_max_force_one, d_max_force_one;
+
   
   
 
