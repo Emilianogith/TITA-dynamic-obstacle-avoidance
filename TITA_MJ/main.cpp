@@ -125,7 +125,7 @@ int main() {
     walking_manager.update(robot_state, joint_command);
 
     // apply a disturbance
-    apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
+    // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
     ++timestep_counter;
     
 

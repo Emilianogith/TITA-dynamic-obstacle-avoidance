@@ -2,6 +2,8 @@
 
 #include <WholeBodyController.hpp>
 #include <DesiredConfiguration.hpp>
+#include <MPC.hpp>
+#include <LQR.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -36,10 +38,12 @@ private:
   double controller_frequency_;
   double t_msec_ = 0;
 
+
+  labrob::MPC mpc_;
+  Eigen::Matrix<double, 1, 400+1> zmp_ref;
+
   // Log files:
   // std::ofstream mpc_timings_log_file_;
-  std::ofstream mpc_com_log_file_;
-  std::ofstream mpc_zmp_log_file_;
   std::ofstream state_log_file_;
 
 }; 

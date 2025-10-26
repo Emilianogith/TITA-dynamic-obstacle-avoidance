@@ -1,5 +1,6 @@
 #include <WalkingManager.hpp>
 
+
 namespace labrob {
 
 bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
@@ -93,7 +94,11 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //     Eigen::Vector3d::Zero(),
     //     p_ZMP
     // );
-    
+
+    mpc_.set_pendulum_height(des_configuration_.com.pos(2));
+    zmp_ref = Eigen::Matrix<double, 1, 400+1>::Zero();
+
+
 
 
     auto params = WholeBodyControllerParams::getDefaultParams();
@@ -130,9 +135,6 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init log files:
     // TODO: may be better to use a proper logging system such as glog.
-    // mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
-    mpc_com_log_file_.open("/tmp/mpc_com.txt");
-    mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
     state_log_file_.open("/tmp/state_log_file.txt");
     state_log_file_ << "time,"
          << "com_x,com_y,com_z,"
@@ -175,6 +177,7 @@ void WalkingManager::update(
     // auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
 
     const auto& p_CoM = robot_data_.com[0];
+    const auto& v_CoM = robot_data_.vcom[0];
     const auto& r_wheel_center = robot_data_.oMf[right_leg4_idx_];
     const auto& l_wheel_center = robot_data_.oMf[left_leg4_idx_];
     Eigen::Vector3d right_rCP = labrob::get_rCP(r_wheel_center.translation(), r_wheel_center.rotation(), 0.0925);
@@ -197,125 +200,115 @@ void WalkingManager::update(
     //     J_torso
     // );
 
+
+
+    // // LQR-based MPC
+    // auto start_time_LQR = std::chrono::high_resolution_clock::now();
+    // labrob::LQR lqr(des_configuration_.com.pos(2));
+    // const double& x_com = p_CoM(0);
+    // const double& vx_com = v_CoM(0);
+    // const double& ax_com = robot_data_.acom[0](0);
+    // const double& x_prev_zmp = des_configuration_.lwheel_contact.pos.p(0);
+    // const double& vx_prev_zmp = des_configuration_.lwheel_contact.vel(0);
+    // const double& ax_prev_zmp = des_configuration_.lwheel_contact.acc(0);
+
+    // lqr.solve(x_com, vx_com, ax_com, x_prev_zmp, vx_prev_zmp, ax_prev_zmp);
+    // SolutionLQR sol = lqr.get_solution();
+
+    // auto end_time_LQR = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_time_LQR = (end_time_LQR - start_time_LQR) * 1000;
+    // std::cout << "LQR solve took: " << elapsed_time_LQR.count() << " ms" << std::endl;
+
+    // if (std::fabs(t_msec_ - 9360.0) < 0.5){
+    //     lqr.record_logs(t_msec_);
+    // }
    
+    // des_configuration_.com.pos(0) = sol.com.pos;  
+    // des_configuration_.com.vel(0) = sol.com.vel;
+    // des_configuration_.com.acc(0) = sol.com.acc; 
 
-    // LQR
-    double g = 9.81;
-    double z0 = des_configuration_.com.pos(2);            // CoM height [m]
-    double eta = std::sqrt(g / z0);            // sqrt(g/z0)
-    double Ts = 0.01;                           // sampling time [s]
-    int N = 100;                                // horizon length
+    // des_configuration_.lwheel_contact.pos.p(0) = sol.zmp.pos;
+    // des_configuration_.lwheel_contact.pos.p(1) = left_contact(1);
+    // des_configuration_.lwheel_contact.vel(0) = sol.zmp.vel;
+    // des_configuration_.lwheel_contact.acc(0) = sol.zmp.acc;
 
-    const auto& v_CoM = robot_data_.vcom[0];
+    // des_configuration_.rwheel_contact.pos.p(0) = sol.zmp.pos;
+    // des_configuration_.rwheel_contact.pos.p(1) = right_contact(1);
+    // des_configuration_.rwheel_contact.vel(0) = sol.zmp.vel;
+    // des_configuration_.rwheel_contact.acc(0) = sol.zmp.acc;
 
-    // Exact discretization
-    const double s = std::sinh(eta*Ts), c = std::cosh(eta*Ts);
-    Eigen::Matrix2d A;
-    A << c, s/eta,
-        eta*s, c;
-    Eigen::Vector2d B;
-    B << 1 - c,
-        -eta*s;
 
-    // --- LQR weights
-    Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
-    Q(0,0) = 2250.0;           // pos weight                         
-    Q(1,1) = 2900.0;           // vel weight      
     
-    Eigen::Matrix<double,1,1> R;
-    R(0,0) = 2920;       // input (ZMP) weight                
-
-    Eigen::Matrix2d Qf = Eigen::Matrix2d::Zero();   
-    Qf(0,0) = 2250.0;             // pos weight
-    Qf(1,1) = 2900.0;             // vel weight
-
-    // --- Storage for TV-LQR
-    std::vector<Eigen::Matrix2d> P(N+1);
-    std::vector<Eigen::RowVector2d> K(N); 
-
-    // Terminal condition
-    P[N] = Qf;
-
-    // Backward Riccati (time-varying LQR)
-    for (int k = N-1; k >= 0; --k) {
-        // S = R + B^T P_{k+1} B  (scalar here)
-        double S = (R + (B.transpose() * P[k+1] * B))(0,0);
-        // K_k = S^{-1} B^T P_{k+1} A   (1x2)
-        K[k] = (1.0 / S) * (B.transpose() * P[k+1] * A);
-        // P_k = Q + A^T (P_{k+1} - P_{k+1} B S^{-1} B^T P_{k+1}) A
-        Eigen::Matrix2d term = P[k+1] - (P[k+1] * B) * (1.0 / S) * (B.transpose() * P[k+1]);
-        P[k] = Q + A.transpose() * term * A;
-    }
-
-    // --- Reference tracking (constant setpoint c*)
-    double c_star = 0.0;
-    Eigen::Vector2d x_ref(c_star, 0.0);
-    double u_ref = c_star;   // steady-state ZMP = c*
-
-    // --- Closed-loop rollout over the horizon (predict)
-    Eigen::VectorXd x_ZMP_des  = Eigen::VectorXd::Zero(N);
-    Eigen::VectorXd v_ZMP_des  = Eigen::VectorXd::Zero(N);
-    Eigen::VectorXd a_ZMP_des  = Eigen::VectorXd::Zero(N);
-    Eigen::VectorXd x_CoM_des = Eigen::VectorXd::Zero(N+1);
-    Eigen::VectorXd v_CoM_des = Eigen::VectorXd::Zero(N+1);
-    Eigen::VectorXd a_CoM_des  = Eigen::VectorXd::Zero(N+1);
-
-    // Current state (measurements)
-    double c_now = p_CoM(0);
-    double cdot_now = v_CoM(0);
-    Eigen::Vector2d x(c_now, cdot_now);
-
-    x_CoM_des(0) = x(0);
-    v_CoM_des(0) = x(1);
-    a_CoM_des(0) = robot_data_.acom[0](0);
     
-    double u_prev = des_configuration_.lwheel_contact.pos.p(0);
-    double v_prev = des_configuration_.lwheel_contact.vel(0);
-    double a_prev = des_configuration_.lwheel_contact.acc(0);
-
-    for (int k = 0; k < N; ++k) {
-        Eigen::Vector2d e = x - x_ref;
-        double u = u_ref - (K[k] * e)(0,0);     // optimal input at stage k
-        // apply / predict
-        x = A * x + B * u;
-        x_ZMP_des(k) = u;
-        
-        x_CoM_des(k+1) = x(0);
-        v_CoM_des(k+1) = x(1);
-        a_CoM_des(k+1) = eta*eta* (x(0) - u);
-
-        // vel, acc derivation
-        const double vmax=1.0, amax=3.0, jmax=20.0; // tune
-        double u_rate = std::clamp((u - u_prev)/Ts, -vmax, vmax);
-        double u_lim  = u_prev + u_rate*Ts;
-
-        double v_cmd  = (u_lim - u_prev)/Ts;
-        double dv     = std::clamp(v_cmd - v_prev, -amax*Ts, amax*Ts);
-        double v_lim  = v_prev + dv;
-
-        double a_cmd  = (v_lim - v_prev)/Ts;
-        double da     = std::clamp(a_cmd - a_prev, -jmax*Ts, jmax*Ts);
-        double a_lim  = a_prev + da;
-
-        x_ZMP_des(k) = u_lim;  v_ZMP_des(k) = v_lim;  a_ZMP_des(k) = a_lim;
-        u_prev = u_lim;  v_prev = v_lim;  a_prev = a_lim;
-    }
+    
+    // squatting manouver
+    // if (std::fabs(t_msec_) < 1000.0){
+    //     des_configuration_.com.pos(2) -= 0.0001;
+    // }else if (std::fabs(t_msec_) > 4000.0 && std::fabs(t_msec_) < 5000.0){
+    //     des_configuration_.com.pos(2) += 0.0001;
+    // }
+    // mpc_.set_pendulum_height(des_configuration_.com.pos(2));
 
 
-    des_configuration_.com.pos(0) = x_CoM_des(1);  
-    des_configuration_.com.vel(0) = v_CoM_des(1);
-    des_configuration_.com.acc(0) = a_CoM_des(1); 
 
-    des_configuration_.lwheel_contact.pos.p(0) = x_ZMP_des(0);
+    // compute reference trajectory
+    // double x_zmp_curr = l_wheel_center.translation()(0);
+    // double step_x = 0.2; 
+    // for (int i = 0; i < 400+1; ++i)
+    //     {
+    //         int step_index = floor(i / 100);
+    //         zmp_ref(0,i) = x_zmp_curr + step_x * step_index;
+    //     }
+
+    // mpc_.set_reference_trajectory(zmp_ref);
+    
+    
+    // DDP-based MPC 
+    if (std::fabs(t_msec_ - 4312.0) < 0.5){
+            mpc_.record_logs = true;
+        }          
+    auto start_time_mpc = std::chrono::high_resolution_clock::now();
+    // Eigen::Vector<double, 9> x0 = Eigen::Vector<double, 9>::Zero();
+    // // x0 << 0.0, 0.0, 0.0, 0.11, 0.0, 0.1, 0.075, 0.0, 0.0;
+    // x0 << p_CoM(0), v_CoM(0), l_wheel_center.translation()(0),
+    // p_CoM(1), v_CoM(1), l_wheel_center.translation()(1),
+    // p_CoM(2), v_CoM(2), l_wheel_center.translation()(2);
+
+    Eigen::Vector<double, 3> x0 = Eigen::Vector<double, 3>::Zero();
+    x0 << p_CoM(0), v_CoM(0), l_wheel_center.translation()(0);
+
+    std::cout << "x0" << x0 << std::endl;
+    
+    Eigen::MatrixXd J_right_wheel = Eigen::MatrixXd::Zero(6, robot_model_.nv);;
+    pinocchio::getFrameJacobian(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel);
+    Eigen::Vector<double, 6> current_rwheel_contact_vel = J_right_wheel * qdot;
+    Eigen::Vector3d curr_zmp_vel = current_rwheel_contact_vel.head<3>();
+    
+
+    mpc_.solve(x0, curr_zmp_vel);
+
+    SolutionMPC sol = mpc_.get_solution();
+
+    auto end_time_mpc = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed_time_mpc = (end_time_mpc - start_time_mpc) * 1000;
+    std::cout << "MPC solve took: " << elapsed_time_mpc.count() << " ms" << std::endl;
+
+    des_configuration_.com.pos(0) = sol.com.pos(0);  
+    des_configuration_.com.vel(0) = sol.com.vel(0);
+    des_configuration_.com.acc(0) = sol.com.acc(0); 
+
+    des_configuration_.lwheel_contact.pos.p(0) = sol.zmp.pos(0);
     des_configuration_.lwheel_contact.pos.p(1) = left_contact(1);
-    des_configuration_.lwheel_contact.vel(0) = v_ZMP_des(0);
-    des_configuration_.lwheel_contact.acc(0) = a_ZMP_des(0);
+    des_configuration_.lwheel_contact.vel(0) = sol.zmp.vel(0);
+    des_configuration_.lwheel_contact.acc(0) = sol.zmp.acc(0);
 
-    des_configuration_.rwheel_contact.pos.p(0) = x_ZMP_des(0);
+    des_configuration_.rwheel_contact.pos.p(0) = sol.zmp.pos(0);
     des_configuration_.rwheel_contact.pos.p(1) = right_contact(1);
-    des_configuration_.rwheel_contact.vel(0) = v_ZMP_des(0);
-    des_configuration_.rwheel_contact.acc(0) = a_ZMP_des(0);
+    des_configuration_.rwheel_contact.vel(0) = sol.zmp.vel(0);
+    des_configuration_.rwheel_contact.acc(0) = sol.zmp.acc(0);
 
+
+    
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
 
@@ -334,11 +327,6 @@ void WalkingManager::update(
     std::cout << "t_msec_ " << t_msec_ << std::endl;
 
     // Log:
-    if (std::fabs(t_msec_ - 9360.0) < 0.5){
-        mpc_com_log_file_ << "t_msec_: " << t_msec_ << std::endl << x_CoM_des.transpose() << std::endl;
-        mpc_zmp_log_file_ << "t_msec_: " << t_msec_ << std::endl << x_ZMP_des.transpose() << std::endl;
-    }
-
     state_log_file_
         << t_msec_ << ","
         << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","

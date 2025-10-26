@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -67,14 +68,16 @@ plt.subplots_adjust(hspace=0.4, top=0.95, bottom=0.08)
 #######
 # PLOT MPC REDICTION AT A GIVEN TIMESTAMP
 # Read first line manually
-with open("/tmp/mpc_com.txt", "r") as f:
-    first_line = f.readline().strip()
+file_path = "/tmp/mpc_com.txt"
+if os.path.exists(file_path):
+    with open("/tmp/mpc_com.txt", "r") as f:
+        first_line = f.readline().strip()
 
-# Load data
-mpc_data_com = np.loadtxt("/tmp/mpc_com.txt", skiprows=1)
-mpc_data_zmp = np.loadtxt("/tmp/mpc_zmp.txt", skiprows=1)
+    # Load data
+    mpc_data_com = np.loadtxt("/tmp/mpc_com.txt", skiprows=1)
+    mpc_data_zmp = np.loadtxt("/tmp/mpc_zmp.txt", skiprows=1)
 
-if mpc_data_com.size > 0:
+    
     # Extract the numeric part
     t_msec = float(first_line.split(":")[1])
 

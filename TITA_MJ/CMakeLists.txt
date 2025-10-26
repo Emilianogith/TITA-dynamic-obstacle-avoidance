@@ -3,6 +3,7 @@ project(TITA_MJ)
 
 set(CMAKE_CXX_STANDARD 17)
 
+
 find_package(glfw3 REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
@@ -28,6 +29,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WholeBodyController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MPC.cpp
 )
 target_include_directories(UtilsLib
   PUBLIC
@@ -54,3 +56,22 @@ target_link_libraries(main
   mujoco::mujoco
   UtilsLib
 )
+
+
+
+
+
+
+
+# ------------------TO SILENT WARNINGS (NOT NECESSARY IF A PROPER INSTALLATION OF DEPENDANCIES HAS BEEN DONE)----------------
+# Provide this define to hush hpp-fcl → coal “please migrate” messages in headers
+set(COAL_DISABLE_HPP_FCL_WARNINGS ON CACHE BOOL "" FORCE)
+add_compile_definitions(COAL_DISABLE_HPP_FCL_WARNINGS)
+# Mute the exact diagnostics that coal/hpp-fcl emit (clang)
+target_compile_options(UtilsLib PRIVATE
+  -Wno-deprecated-declarations
+  -Wno-macro-redefined)
+target_compile_options(main PRIVATE
+  -Wno-deprecated-declarations
+  -Wno-macro-redefined)
+# -----------------------------------------------------------------------------------------------------------------

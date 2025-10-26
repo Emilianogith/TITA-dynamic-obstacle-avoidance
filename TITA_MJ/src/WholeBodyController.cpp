@@ -145,9 +145,6 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::Vector3d right_contact = r_wheel_center + right_rCP;
   Eigen::Vector3d left_contact = l_wheel_center + left_rCP;
 
-  std::cout << " r_wheel_center" << r_wheel_center << std::endl;
-  std::cout << " l_wheel_center" << l_wheel_center << std::endl;
-
 
 
   const auto& J_com = robot_data_.Jcom;
@@ -159,8 +156,6 @@ WholeBodyController::compute_inverse_dynamics(
   
   Eigen::Vector3d current_com_pos = robot_data_.com[0];
   Eigen::Vector3d current_com_vel = robot_data_.vcom[0];
-
-  std::cout << " current_com_pos" << current_com_pos << std::endl;
 
   Eigen::Matrix3d current_base_link_pos = robot_data_.oMf[base_link_idx_].rotation();
   Eigen::Vector3d current_base_link_vel = J_base_link_.bottomRows<3>() * qdot;
@@ -410,9 +405,14 @@ WholeBodyController::compute_inverse_dynamics(
   
   
 
-  std::cout << "err_com" << err_com << std::endl;
-  std::cout << "err_rwheel" << err_rwheel << std::endl;
-  std::cout << "err_lwheel" << err_lwheel << std::endl;
+  // DEBUG PRINT
+  // std::cout << " r_wheel_center" << r_wheel_center << std::endl;
+  // std::cout << " l_wheel_center" << l_wheel_center << std::endl;
+  // std::cout << " current_com_pos" << current_com_pos << std::endl;
+
+  // std::cout << "err_com" << err_com << std::endl;
+  // std::cout << "err_rwheel" << err_rwheel << std::endl;
+  // std::cout << "err_lwheel" << err_lwheel << std::endl;
   // std::cout << "err_posture" << err_posture << std::endl;
 
 
