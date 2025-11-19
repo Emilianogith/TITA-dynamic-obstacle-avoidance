@@ -1,4 +1,5 @@
 <mujoco model="tita">
+  <option gravity="0 0 -9.81" integrator="RK4" timestep="0.002"/>
   <default>
     <default class="robot">
       <default class="motor">
@@ -75,6 +76,10 @@
 
 
     <body name="base_link" pos="0.00000000 0.00000000 0.41700019" quat="1 0 0 0" childclass="robot">
+      <inertial 
+      pos="0.020452 0.0000035457 0.01871"
+      fullinertia="0.061855 0.036934 0.071232  -2.6029e-05 0.00081082 -1.7269e-05"
+      mass="13.2"/>
       <freejoint name="floating_base" />
       <geom name="base_link_collision" pos="0 0 0.017" quat="1.0 0.0 0.0 0.0" type="box" size="0.235 0.15 0.095" class="collision" />
       <geom name="base_link_visual" pos="0 0 0" quat="1.0 0.0 0.0 0.0" material="black" type="mesh" mesh="base_link.STL" class="visual" />

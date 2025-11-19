@@ -59,19 +59,19 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // des_configuration_.orientation = Eigen::Quaterniond::Identity();
     // des_configuration_.linear_velocity = Eigen::Vector3d::Zero();
     // des_configuration_.angular_velocity = Eigen::Vector3d::Zero();
-    des_configuration_.com.pos = Eigen::Vector3d(0.0, 0.0, 0.40);  
+    des_configuration_.com.pos = Eigen::Vector3d(0.0, 0.0, 0.4);  
     des_configuration_.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
     des_configuration_.com.acc = Eigen::Vector3d::Zero();
-    des_configuration_.lwheel_contact.pos.p = Eigen::Vector3d(0.0, 0.283, 0.0925);
-    des_configuration_.lwheel_contact.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
-    // des_configuration_.lwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
-    des_configuration_.lwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
-    des_configuration_.lwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
-    des_configuration_.rwheel_contact.pos.p = Eigen::Vector3d(0.0, -0.283, 0.0925);
-    des_configuration_.rwheel_contact.pos.R = Eigen::Matrix3d::Identity();
-    // des_configuration_.rwheel_contact.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
-    des_configuration_.rwheel_contact.vel = Eigen::Vector<double, 6>::Zero();
-    des_configuration_.rwheel_contact.acc = Eigen::Vector<double, 6>::Zero();
+    des_configuration_.lwheel.pos.p = Eigen::Vector3d(0.0, 0.3, 0.0922);
+    des_configuration_.lwheel.pos.R = Eigen::Matrix3d::Identity();     // desired orientation of the contact frame
+    // des_configuration_.lwheel.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
+    des_configuration_.lwheel.vel = Eigen::Vector<double, 6>::Zero();
+    des_configuration_.lwheel.acc = Eigen::Vector<double, 6>::Zero();
+    des_configuration_.rwheel.pos.p = Eigen::Vector3d(0.0, -0.3, 0.0922);
+    des_configuration_.rwheel.pos.R = Eigen::Matrix3d::Identity();
+    // des_configuration_.rwheel.pos.R << 1,0,0,  0, 0.984,0.1736,  -0.1736,0.984,0;
+    des_configuration_.rwheel.vel = Eigen::Vector<double, 6>::Zero();
+    des_configuration_.rwheel.acc = Eigen::Vector<double, 6>::Zero();
     des_configuration_.base_link.pos =Eigen::Matrix3d::Identity();
     // des_configuration_.base_link.pos << 0,-1,0,  1,0,0,  0,0,1;
     des_configuration_.base_link.vel = Eigen::Vector3d::Zero();
@@ -95,23 +95,24 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //     p_ZMP
     // );
 
-    mpc_.set_pendulum_height(des_configuration_.com.pos(2));
-    zmp_ref = Eigen::Matrix<double, 1, 400+1>::Zero();
+    // mpc_.set_pendulum_height(des_configuration_.com.pos(2));
+    pc_ref = Eigen::Matrix<double, 2, 200+1>::Zero();
+    pcom_ref = Eigen::Matrix<double, 3, 200+1>::Zero();
 
 
 
 
     auto params = WholeBodyControllerParams::getDefaultParams();
-    // params.Kp_motion = 13000;                   
-    // params.Kd_motion = 300;                    
+    params.Kp_motion = 130;     //180000  //13000        
+    params.Kd_motion = 80;   // 2200 IMPORTANT for z traj tracking         
     // params.Kp_regulation = 1000.0;            
     // params.Kd_regulation = 50;                 
 
-    // params.Kp_wheel = 90000.0;                 
-    // params.Kd_wheel = 200.0;                 
+    params.Kp_wheel = 130.0;    // 90000.0 soglia per far trackare perfettamente x_wheel (problema dipende da orientation wheel e ycom-error)             
+    params.Kd_wheel = 180.0;                 
 
-    // params.weight_q_ddot = 1e-4;                
-    // params.weight_com = 1.1;                    
+    // params.weight_q_ddot = 1e-12;                
+    params.weight_com = 5.0;        //2.0                    
     // params.weight_lwheel = 2.0;                 
     // params.weight_rwheel = 2.0;                 
     // params.weight_base = 0.1;                  
@@ -174,7 +175,7 @@ void WalkingManager::update(
         q,
         qdot
     );
-    // auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
+    auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
 
     const auto& p_CoM = robot_data_.com[0];
     const auto& v_CoM = robot_data_.vcom[0];
@@ -208,9 +209,9 @@ void WalkingManager::update(
     // const double& x_com = p_CoM(0);
     // const double& vx_com = v_CoM(0);
     // const double& ax_com = robot_data_.acom[0](0);
-    // const double& x_prev_zmp = des_configuration_.lwheel_contact.pos.p(0);
-    // const double& vx_prev_zmp = des_configuration_.lwheel_contact.vel(0);
-    // const double& ax_prev_zmp = des_configuration_.lwheel_contact.acc(0);
+    // const double& x_prev_zmp = des_configuration_.lwheel.pos.p(0);
+    // const double& vx_prev_zmp = des_configuration_.lwheel.vel(0);
+    // const double& ax_prev_zmp = des_configuration_.lwheel.acc(0);
 
     // lqr.solve(x_com, vx_com, ax_com, x_prev_zmp, vx_prev_zmp, ax_prev_zmp);
     // SolutionLQR sol = lqr.get_solution();
@@ -227,15 +228,15 @@ void WalkingManager::update(
     // des_configuration_.com.vel(0) = sol.com.vel;
     // des_configuration_.com.acc(0) = sol.com.acc; 
 
-    // des_configuration_.lwheel_contact.pos.p(0) = sol.zmp.pos;
-    // des_configuration_.lwheel_contact.pos.p(1) = left_contact(1);
-    // des_configuration_.lwheel_contact.vel(0) = sol.zmp.vel;
-    // des_configuration_.lwheel_contact.acc(0) = sol.zmp.acc;
+    // des_configuration_.lwheel.pos.p(0) = sol.zmp.pos;
+    // des_configuration_.lwheel.pos.p(1) = left_contact(1);
+    // des_configuration_.lwheel.vel(0) = sol.zmp.vel;
+    // des_configuration_.lwheel.acc(0) = sol.zmp.acc;
 
-    // des_configuration_.rwheel_contact.pos.p(0) = sol.zmp.pos;
-    // des_configuration_.rwheel_contact.pos.p(1) = right_contact(1);
-    // des_configuration_.rwheel_contact.vel(0) = sol.zmp.vel;
-    // des_configuration_.rwheel_contact.acc(0) = sol.zmp.acc;
+    // des_configuration_.rwheel.pos.p(0) = sol.zmp.pos;
+    // des_configuration_.rwheel.pos.p(1) = right_contact(1);
+    // des_configuration_.rwheel.vel(0) = sol.zmp.vel;
+    // des_configuration_.rwheel.acc(0) = sol.zmp.acc;
 
 
     
@@ -253,7 +254,7 @@ void WalkingManager::update(
 
     // compute reference trajectory
     // double x_zmp_curr = l_wheel_center.translation()(0);
-    // double step_x = 0.2; 
+    // double step_x = 0.1; 
     // for (int i = 0; i < 400+1; ++i)
     //     {
     //         int step_index = floor(i / 100);
@@ -261,31 +262,69 @@ void WalkingManager::update(
     //     }
 
     // mpc_.set_reference_trajectory(zmp_ref);
+
+    double h_curr = p_CoM(2);
+    double x_curr = p_CoM(0);
+    double step_x = 0.4; 
+    double tresh = 0.01;
+    double x_goal = 4.0;
+    double step_z = -0.01; 
+    double h_goal = 0.35;
+     for (int i = 0; i < 200+1; ++i)
+    {
+        int step_index = floor(i / 100);
+
+        double x_pred = x_curr + step_x * step_index;
+        if ((std::abs(x_goal - x_pred) > tresh) && (x_pred < x_goal)){
+            pc_ref(0,i) = x_pred;
+        }else{
+            pc_ref(0,i) = x_goal;
+        }
+
+        // pc_ref(0,i) = 0.0;
+        pc_ref(1,i) = 0.0;
+        
+        pcom_ref(0,i) = 0.0;
+        pcom_ref(1,i) = 0.0;
+
+        double h_pred = h_curr + step_z * step_index;
+        if (std::abs(h_goal - h_pred) > tresh){
+            pcom_ref(2,i) = h_pred;
+        }else{
+            pcom_ref(2,i) = h_goal;
+        }
+        // pcom_ref(2,i) = 0.4;
+    }
     
+    mpc_.set_reference_trajectory(pc_ref, pcom_ref);
     
     // DDP-based MPC 
-    if (std::fabs(t_msec_ - 4312.0) < 0.5){
+    if (static_cast<int>(t_msec_) % 10 == 0){
             mpc_.record_logs = true;
-        }          
+            mpc_.t_msec = t_msec_;
+        }        
+           
     auto start_time_mpc = std::chrono::high_resolution_clock::now();
-    // Eigen::Vector<double, 9> x0 = Eigen::Vector<double, 9>::Zero();
-    // // x0 << 0.0, 0.0, 0.0, 0.11, 0.0, 0.1, 0.075, 0.0, 0.0;
-    // x0 << p_CoM(0), v_CoM(0), l_wheel_center.translation()(0),
-    // p_CoM(1), v_CoM(1), l_wheel_center.translation()(1),
-    // p_CoM(2), v_CoM(2), l_wheel_center.translation()(2);
 
-    Eigen::Vector<double, 3> x0 = Eigen::Vector<double, 3>::Zero();
-    x0 << p_CoM(0), v_CoM(0), l_wheel_center.translation()(0);
 
-    std::cout << "x0" << x0 << std::endl;
-    
+    Eigen::MatrixXd J_left_wheel = Eigen::MatrixXd::Zero(6, robot_model_.nv);;
+    pinocchio::getFrameJacobian(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel);
+    Eigen::Vector<double, 6> current_lwheel_vel = J_left_wheel * qdot;
+    Eigen::Vector3d curr_pl_vel = current_lwheel_vel.head<3>();
+
     Eigen::MatrixXd J_right_wheel = Eigen::MatrixXd::Zero(6, robot_model_.nv);;
     pinocchio::getFrameJacobian(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel);
-    Eigen::Vector<double, 6> current_rwheel_contact_vel = J_right_wheel * qdot;
-    Eigen::Vector3d curr_zmp_vel = current_rwheel_contact_vel.head<3>();
-    
+    Eigen::Vector<double, 6> current_rwheel_vel = J_right_wheel * qdot;
+    Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
-    mpc_.solve(x0, curr_zmp_vel);
+    Eigen::Vector<double, 10> x0 = Eigen::Vector<double, 10>::Zero();
+    x0 << p_CoM(0), p_CoM(1), p_CoM(2),
+          v_CoM(0), v_CoM(1), v_CoM(2),
+          (r_wheel_center.translation()(0) + l_wheel_center.translation()(0))/2 , (l_wheel_center.translation()(1)+r_wheel_center.translation()(1))/2,
+          (curr_pr_vel(0)+curr_pl_vel(0))/2, (curr_pr_vel(1) + curr_pl_vel(1))/2;
+
+    std::cout << "x0" << x0 << std::endl;
+    mpc_.solve(x0);
 
     SolutionMPC sol = mpc_.get_solution();
 
@@ -293,20 +332,33 @@ void WalkingManager::update(
     std::chrono::duration<double> elapsed_time_mpc = (end_time_mpc - start_time_mpc) * 1000;
     std::cout << "MPC solve took: " << elapsed_time_mpc.count() << " ms" << std::endl;
 
+
+    std::cout << "zcom" << p_CoM(2) << std::endl;
+    std::cout << "zcom_des" << sol.com.pos(2) << std::endl;
+    std::cout << "v_zcom" << v_CoM(2) << std::endl;
+    std::cout << "v_zcom_des" << sol.com.vel(2) << std::endl;
+
+    
+    des_configuration_.com.pos(2) = sol.com.pos(2);  
+    des_configuration_.com.vel(2) = sol.com.vel(2);
+    des_configuration_.com.acc(2) = sol.com.acc(2); 
+    
+
     des_configuration_.com.pos(0) = sol.com.pos(0);  
     des_configuration_.com.vel(0) = sol.com.vel(0);
     des_configuration_.com.acc(0) = sol.com.acc(0); 
 
-    des_configuration_.lwheel_contact.pos.p(0) = sol.zmp.pos(0);
-    des_configuration_.lwheel_contact.pos.p(1) = left_contact(1);
-    des_configuration_.lwheel_contact.vel(0) = sol.zmp.vel(0);
-    des_configuration_.lwheel_contact.acc(0) = sol.zmp.acc(0);
+    des_configuration_.lwheel.pos.p(0) = sol.pc.pos(0);
+    // des_configuration_.lwheel.pos.p(1) = sol.pc.pos(1) * 2 - r_wheel_center.translation()(1);
+    des_configuration_.lwheel.pos.p(1) = l_wheel_center.translation()(1);
+    des_configuration_.lwheel.vel(0) = sol.pc.vel(0);
+    des_configuration_.lwheel.acc(0) = sol.pc.acc(0);
 
-    des_configuration_.rwheel_contact.pos.p(0) = sol.zmp.pos(0);
-    des_configuration_.rwheel_contact.pos.p(1) = right_contact(1);
-    des_configuration_.rwheel_contact.vel(0) = sol.zmp.vel(0);
-    des_configuration_.rwheel_contact.acc(0) = sol.zmp.acc(0);
-
+    des_configuration_.rwheel.pos.p(0) = sol.pc.pos(0);
+    // des_configuration_.rwheel.pos.p(1) = sol.pc.pos(1) * 2 - l_wheel_center.translation()(1);
+    des_configuration_.rwheel.pos.p(1) = r_wheel_center.translation()(1);
+    des_configuration_.rwheel.vel(0) = sol.pc.vel(0);
+    des_configuration_.rwheel.acc(0) = sol.pc.acc(0);
 
     
 
@@ -332,9 +384,9 @@ void WalkingManager::update(
         << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","
         << des_configuration_.com.pos(0) << "," << des_configuration_.com.pos(1) << "," << des_configuration_.com.pos(2) << ","
         << l_wheel_center.translation()(0) << "," << l_wheel_center.translation()(1) << "," << l_wheel_center.translation()(2) << ","
-        << des_configuration_.lwheel_contact.pos.p(0) << "," << des_configuration_.lwheel_contact.pos.p(1) << "," << des_configuration_.lwheel_contact.pos.p(2) << ","
+        << des_configuration_.lwheel.pos.p(0) << "," << des_configuration_.lwheel.pos.p(1) << "," << des_configuration_.lwheel.pos.p(2) << ","
         << r_wheel_center.translation()(0) << "," << r_wheel_center.translation()(1) << "," << r_wheel_center.translation()(2) << ","
-        << des_configuration_.rwheel_contact.pos.p(0) << "," << des_configuration_.rwheel_contact.pos.p(1) << "," << des_configuration_.rwheel_contact.pos.p(2)
+        << des_configuration_.rwheel.pos.p(0) << "," << des_configuration_.rwheel.pos.p(1) << "," << des_configuration_.rwheel.pos.p(2)
         << std::endl;
 }
 

@@ -109,7 +109,6 @@ int main() {
 
   int timestep_counter = 0;
 
-
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -128,7 +127,6 @@ int main() {
     // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
     ++timestep_counter;
     
-
     mj_step1(mj_model_ptr, mj_data_ptr);
     
     if (first_frame == true) {
@@ -145,6 +143,18 @@ int main() {
       joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
       joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
     }
+
+
+    //  for (int i = 0; i < mj_data_ptr->ncon; i++)
+    //     {
+    //         const mjContact& con = mj_data_ptr->contact[i];
+
+    //         std::cout << "Contact " << i << ": ("
+    //                   << con.pos[0] << ", "
+    //                   << con.pos[1] << ", "
+    //                   << con.pos[2] << ")\n";
+    //     }
+
 
     mj_step2(mj_model_ptr, mj_data_ptr);
 

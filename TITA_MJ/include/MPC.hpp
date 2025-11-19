@@ -1,6 +1,10 @@
+#pragma once
+
 #include "DdpSolver.hpp"
 #include <iostream>
 #include <fstream>
+
+#include <pinocchio/algorithm/centroidal.hpp>     // to use pinocchio::skew
 
 namespace labrob {
 
@@ -12,123 +16,143 @@ struct SolutionMPC {
     Eigen::Vector3d acc;
   };
 
-  struct Zmp {
+  struct Pc {
     Eigen::Vector3d pos; 
     Eigen::Vector3d vel; 
     Eigen::Vector3d acc;
   };
 
   Com com;
-  Zmp zmp;
+  Pc pc;
 };
 
-
-class MPC {
-  static constexpr int SOLVER_MAX_ITER = 1;         // 10
-  static constexpr int NX = 3;                      // state size
+struct QP_Z { 
+  static constexpr int NX = 2;                      // state size
   static constexpr int NU = 1;                      // input size
-  static constexpr int NY = 1;                      // terminal constraint size
-  static constexpr int NC = 2 * NY;                 // inequality constraint size
-  static constexpr int NH = 400;          //400     // horizon length
+  static constexpr int NY = 1;             
+
   typedef Eigen::Matrix<double, NX, 1> VectorX;
   typedef Eigen::Matrix<double, NU, 1> VectorU;
 
+
+  Eigen::Matrix<double, NX, NX> A = Eigen::Matrix<double, NX, NX>::Zero();
+  Eigen::Matrix<double, NX, NU> B = Eigen::Matrix<double, NX, NU>::Zero();
+  Eigen::Matrix<double, NX, 1> c = Eigen::Matrix<double, NX, 1>::Zero();
+
+  // output matrices
+  Eigen::Matrix<double, NY, NX> C_com, Cv_com;
+
+  Eigen::Matrix<double, NU, 1> u_prev = Eigen::Vector<double, NU>::Zero();
+
+  QP_Z(double m, double grav)
+  {
+
+      C_com << 1,0;
+      Cv_com << 0,1;
+
+      //dynmaics
+      A(0,1) = 1.0;
+      B(1,0) = 1.0/m;
+      c << 0,-grav;
+
+      u_prev << m*grav;
+  }
+};
+
+struct QP_XY {
+
+  static constexpr int NX = 8;
+  static constexpr int NU = 2;
+  static constexpr int NY = 2;
+
+  typedef Eigen::Matrix<double, NX, 1> VectorX;
+  typedef Eigen::Matrix<double, NU, 1> VectorU;
+
+  Eigen::Matrix<double, NX, NX> A = Eigen::Matrix<double, NX, NX>::Zero();
+  Eigen::Matrix<double, NX, NU> B = Eigen::Matrix<double, NX, NU>::Zero();
+
+  // output matrices
+  Eigen::Matrix<double, NY, NX> C_com, Cv_com, C_pc, Cv_pc;
+
+  Eigen::Matrix<double, NU, 1> u_prev = Eigen::Vector<double, NU>::Zero();
+
+  QP_XY()
+  {
+      C_pc << 0,0, 0,0, 1,0, 0,0,
+               0,0, 0,0, 0,1, 0,0;
+
+      Cv_pc << 0,0, 0,0, 0,0, 1,0,
+                0,0, 0,0, 0,0, 0,1;
+
+      C_com << 1,0, 0,0, 0,0, 0,0,
+               0,1, 0,0, 0,0, 0,0;
+
+      Cv_com << 0,0, 1,0, 0,0, 0,0,
+                0,0, 0,1, 0,0, 0,0;
+      
+      u_prev << 0,0;
+  }
+  };
+
+
+class MPC {
+  static constexpr int SOLVER_MAX_ITER = 1;    
+  static constexpr int N_STATE = 10;          
+  static constexpr int N_OUTPUT = 3;         
+  static constexpr int NH = 200;
+
   public:
 
-  MPC(){
-    // C_zmp << 0, 0, 1, 0, 0, 0, 0, 0, 0,
-    //          0, 0, 0, 0, 0, 1, 0, 0, 0,
-    //          0, 0, 0, 0, 0, 0, 0, 0, 1;
-    // C_com << 1, 0, 0, 0, 0, 0, 0, 0, 0,
-    //          0, 0, 0, 1, 0, 0, 0, 0, 0,
-    //          0, 0, 0, 0, 0, 0, 1, 0, 0;
-
-    // // compute reference trajectory
-    // // ogni volta la ricalcola, trova altro modo per assegnare la ref traj
-    // double step_x = 0.0; //0.1;
-    // double step_y = 0.0; //0.1;
-    // for (int i = 0; i < NH+1; ++i)
-    // {
-    //     int step_index = floor(i / 100);
-    //     int left_right = step_index % 2 == 0 ? 1 : -1;
-    //     zmp_ref(0,i) = step_x * step_index;
-    //     zmp_ref(1,i) = step_y * left_right;
-    //     zmp_ref(2,i) = 0.095;
-    // }
-
-    C_zmp << 0, 0, 1;
-    C_com << 1, 0, 0;
-    Cv_com << 0, 1, 0;
-  };
+  MPC(): Qp_z(m, grav){};
 
   
   SolutionMPC get_solution() const {
     return {
       {pos_com_, vel_com_, acc_com_},   // COM
-      {pos_zmp_, vel_zmp_, acc_zmp_}    // ZMP
+      {pos_pc_, vel_pc_, acc_pc_}       // ZMP
     };
   }
-  
-  void set_pendulum_height(double h_des){
-    h = h_des;
-    η = sqrt(grav/h);
 
-    // // dynamics
-    // Eigen::Matrix<double, 3, 3> A_LIP;
-    // A_LIP << 0, 1, 0, η*η, 0, -η*η, 0, 0, 0;
-    // Eigen::Matrix<double, 3, 1> B_LIP;
-    // B_LIP << 0, 0, 1;
-    // //   static Eigen::Matrix<double, MPC::NX, 1> c = Eigen::Matrix<double, MPC::NX, 1>::Zero();
-    // //   c << 0, 0, 0, 0, 0, 0, 0, -grav, 0;
-
-    // for (int i = 0; i < 3; ++i)
-    //   {
-    //     A.block<3,3>(3*i,3*i) = A_LIP;
-    //     B.block<3,1>(3*i,i)   = B_LIP;
-    //     if (i == 2){
-    //       A.block<3,3>(3*i,3*i) << 0,1,0,  0,0,0,  0,0,0; // not controlled z
-    //     }
-    //   }
-
-    // dynamics
-    A << 0, 1, 0, η*η, 0, -η*η, 0, 0, 0;
-    B << 0, 0, 1;
+  void set_reference_trajectory(Eigen::Matrix<double, N_OUTPUT-1, NH + 1>& pc_traj_ref, Eigen::Matrix<double, N_OUTPUT, NH + 1>& pcom_traj_ref){
+    pcom_ref = pcom_traj_ref;
+    pc_ref = pc_traj_ref;
   }
 
-  void set_reference_trajectory(Eigen::Matrix<double, NY, NH+1>& traj_ref){
-    zmp_ref = traj_ref;
-  }
-
-
-  void solve(Eigen::Vector<double, NX> x0, Eigen::Vector3d curr_zmp_vel);
+  void solve(Eigen::Vector<double, N_STATE> x0);
 
   bool record_logs = false;
+  double t_msec = 0.0;
 
 private:
 
-  Eigen::Vector3d pos_com_, vel_com_, acc_com_, pos_zmp_, vel_zmp_, acc_zmp_;
+  Eigen::Vector3d pos_com_, vel_com_, acc_com_, pos_pc_, vel_pc_, acc_pc_;
 
-  // LIP parameters
-  double h;                           // CoM height
+  // VHIP parameters
   double grav = 9.81;                 // gravity
-  double η;                           // pendulum natural pulse
-  double Δ = 0.01;                    // time step
+  double Δ = 0.002;                   // time step
+  double m = 44.0763;
+  double z_c = 0.0;                   // contact point z
 
   // cost function weights
-  double w_z = 20.0;          //20.0     // ZMP tracking weight
-  double w_cd = 20.0;          //20.0     // COM vel tracking weight
-  double w_zd = 0.001;        //0.001          // input weight
+  double w_z = 20.0;                  // ZMP tracking weight
+  double w_zd = 0.0001;               // input weight
+  
+  double w_acc = 1e-9; 
+  double w_fc = 1e-8;  
+  
+  double w_h = 160.0; 
+  double w_vh = 0.01;
 
-  // output matrices
-  Eigen::Matrix<double, NY, NX> C_zmp, C_com, Cv_com;
+  double w_c = 0.0; 
+  double w_cd = 1.0;                  // COM vel tracking weight
+
 
   // zmp ref trajectory
-  Eigen::Matrix<double, NY, NH+1> zmp_ref = Eigen::Matrix<double, NY, NH + 1>::Zero();
+  Eigen::Matrix<double, N_OUTPUT, NH+1> pcom_ref = Eigen::Matrix<double, N_OUTPUT, NH + 1>::Zero();
+  Eigen::Matrix<double, N_OUTPUT-1, NH+1> pc_ref = Eigen::Matrix<double, N_OUTPUT-1, NH + 1>::Zero();
 
-  // dynamics
-  Eigen::Matrix<double, NX, NX> A = Eigen::Matrix<double, NX, NX>::Zero();
-  Eigen::Matrix<double, NX, NU> B = Eigen::Matrix<double, NX, NU>::Zero();
-
+  QP_Z Qp_z;
+  QP_XY Qp_xy;
 }; 
 
 } // end namespace labrob

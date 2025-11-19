@@ -158,8 +158,8 @@ class MujocoUI {
     mjr_defaultContext(&con_);
 
     // Visualize contact points and contact forces
-    opt_.flags[mjVIS_CONTACTPOINT] = true;
-    opt_.flags[mjVIS_CONTACTFORCE] = true;
+    opt_.flags[mjVIS_CONTACTPOINT] = false;
+    opt_.flags[mjVIS_CONTACTFORCE] = false;
     opt_.flags[mjVIS_TRANSPARENT] = true;
 
     cam_.distance = 10.0;

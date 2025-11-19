@@ -40,7 +40,8 @@ private:
 
 
   labrob::MPC mpc_;
-  Eigen::Matrix<double, 1, 400+1> zmp_ref;
+  Eigen::Matrix<double, 2, 200+1> pc_ref;
+  Eigen::Matrix<double, 3, 200+1> pcom_ref;
 
   // Log files:
   // std::ofstream mpc_timings_log_file_;

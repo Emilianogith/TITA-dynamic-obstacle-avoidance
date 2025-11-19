@@ -5,7 +5,7 @@
 
 static constexpr double EQ_THR = 1e-6;
 
-template <int NX, int NU, int NY, int NC, int NH>
+template <int NX, int NU, int NE, int NY, int NC, int NH>
 class DdpSolver
 {
 public:
@@ -13,6 +13,7 @@ public:
   // convenient aliases
   using VectorX = Eigen::Matrix<double, NX, 1>;
   using VectorU = Eigen::Matrix<double, NU, 1>;
+  using VectorE = Eigen::Matrix<double, NE, 1>;
   using VectorY = Eigen::Matrix<double, NY, 1>;
   using VectorC = Eigen::Matrix<double, NC, 1>;
   using MatrixXX = Eigen::Matrix<double, NX, NX>;
@@ -22,11 +23,13 @@ public:
   using MatrixCX = Eigen::Matrix<double, NC, NX>;
   using MatrixCU = Eigen::Matrix<double, NC, NU>;
   using MatrixHY = Eigen::Matrix<double, NY, NX>;
+  using MatrixHE = Eigen::Matrix<double, NE, NX>;
+  using MatrixHEU = Eigen::Matrix<double, NE, NU>;
 
   // function types (adjust signatures if your functions differ)
-  using FuncF    = std::function<VectorX(const VectorX&, const VectorU&)>;
-  using FuncFX   = std::function<MatrixXX(const VectorX&, const VectorU&)>;
-  using FuncFU   = std::function<MatrixXU(const VectorX&, const VectorU&)>;
+  using FuncF    = std::function<VectorX(const VectorX&, const VectorU&, int)>;
+  using FuncFX   = std::function<MatrixXX(const VectorX&, const VectorU&, int)>;
+  using FuncFU   = std::function<MatrixXU(const VectorX&, const VectorU&, int)>;
   using FuncL    = std::function<Eigen::Matrix<double, 1, 1>(const VectorX&, const VectorU&, int)>;
   using FuncLx   = std::function<VectorX(const VectorX&, const VectorU&, int)>;
   using FuncLu   = std::function<VectorU(const VectorX&, const VectorU&, int)>;
@@ -38,10 +41,14 @@ public:
   using FuncLterxx = std::function<MatrixXX(const VectorX&)>;
   using FuncHter   = std::function<VectorY(const VectorX&)>;
   using FuncHterx  = std::function<MatrixHY(const VectorX&)>;
-  using FuncG      = std::function<VectorC(const VectorX&, int)>;
+  using FuncG      = std::function<VectorC(const VectorX&, const VectorU& ,int)>;
   using FuncGx     = std::function<MatrixCX(const VectorX&, int)>;
   using FuncGu     = std::function<MatrixCU(const VectorX&, int)>;
+  using FuncH      = std::function<VectorE(const VectorX&, const VectorU&)>;
+  using FuncHx     = std::function<MatrixHE(const VectorX&, const VectorU&)>;
+  using FuncHu     = std::function<MatrixHEU(const VectorX&, const VectorU&)>;
 
+  bool perform_line_search;
   int max_iters;
   double alpha_0, alpha_converge_threshold, line_search_decrease_factor;
   
@@ -49,6 +56,11 @@ public:
   std::array<Eigen::Vector<double, NX>, NH+1> x, x_new, x_guess, d, d_new;
   std::array<Eigen::Vector<double, NU>, NH> u, u_new, u_guess;
   std::array<Eigen::Vector<double, NC>, NH+1> λ, λ_new;
+
+
+  std::array<Eigen::Vector<double, NE>, NH> λh, λh_new;     // inserito per equality constraint
+
+
   Eigen::Vector<double, NX> x_0;
   
   // dynamics
@@ -68,6 +80,16 @@ public:
   
   // constraints
   Eigen::Vector<double, NY> λter;
+
+
+
+  Eigen::Vector<double, NE> h_eval;       // inserito per equality constraint
+  Eigen::Matrix<double, NE, NX> hx_eval;
+  Eigen::Matrix<double, NE, NU> hu_eval;
+  std::array<Eigen::Matrix<double, NU, NX>, NE> hux_eval;
+
+
+
   Eigen::Vector<double, NC> g_eval;
   Eigen::Matrix<double, NC, NX> gx_eval;
   Eigen::Matrix<double, NC, NU> gu_eval;
@@ -99,13 +121,18 @@ private:
   FuncG g_;
   FuncGx gx_;
   FuncGu gu_;
+  FuncH h_;
+  FuncHx hx_;
+  FuncHu hu_;
 
 public:
   DdpSolver(FuncF f, FuncFX fx, FuncFU fu,
             FuncL L, FuncLx Lx, FuncLu Lu, FuncLxx Lxx, FuncLuu Luu, FuncLux Lux,
             FuncLter L_ter, FuncLterx L_terx, FuncLterxx L_terxx,
             FuncHter h_ter, FuncHterx h_terx,
+            FuncH h, FuncHx hx, FuncHu hu,
             FuncG g, FuncGx gx, FuncGu gu,
+            bool perform_line_search = true,
             int max_iters = 10,
             double alpha_0 = 1.0,
             double alpha_converge_threshold = 1e-1,
@@ -114,9 +141,13 @@ public:
       L_(std::move(L)), Lx_(std::move(Lx)), Lu_(std::move(Lu)), Lxx_(std::move(Lxx)), Luu_(std::move(Luu)), Lux_(std::move(Lux)),
       L_ter_(std::move(L_ter)), L_terx_(std::move(L_terx)), L_terxx_(std::move(L_terxx)),
       h_ter_(std::move(h_ter)), h_terx_(std::move(h_terx)),
+      h_(std::move(h)), hx_(std::move(hx)), hu_(std::move(hu)),
       g_(std::move(g)), gx_(std::move(gx)), gu_(std::move(gu)),
-      max_iters(max_iters), alpha_0(alpha_0),
-      alpha_converge_threshold(alpha_converge_threshold), line_search_decrease_factor(line_search_decrease_factor)
+      perform_line_search(perform_line_search),
+      max_iters(max_iters), 
+      alpha_0(alpha_0),
+      alpha_converge_threshold(alpha_converge_threshold), 
+      line_search_decrease_factor(line_search_decrease_factor)
   {
     // identity matrix for computing inverse
     I = Eigen::Matrix<double, NU, NU>::Identity(NU, NU);
@@ -128,14 +159,15 @@ public:
       u_guess[i].setZero();
       λ[i].setZero();
       λ_new[i].setZero();
+      
+      λh[i].setZero();            // inserito per equality constraint
+      λh_new[i].setZero();
     }
     x_guess[NH].setZero();
     λ[NH].setZero();
     λ_new[NH].setZero();
     x_0.setZero();
     λter.setZero();
-    μ = 1000.0;
-    Iμ = Eigen::Matrix<double, NC, 1>::Ones();
 
     d[0].setZero();
     d_new[0].setZero();
@@ -158,17 +190,28 @@ public:
       const std::array<Eigen::Vector<double, NX>, NH+1>& d)
   {
     double penalty = 0.0;
+
+    // equality constraints
+    if (h_)
+    {
+      for (int i = 0; i < NH; ++i) {
+      h_eval = h_(x[i], u[i]);
+      penalty += 0.5 * μ * h_eval.squaredNorm();
+      }
+    }
+
     // inequality constraints
     if (g_)
     {
       for (int i = 0; i < NH; ++i)
       {
-        g_eval = g_(x[i], i);
+        g_eval = g_(x[i], u[i], i);
         for (int j = 0; j < NC; ++j)
           Iμ(j,0) = (g_eval(j) < 0.0 && λ[i](j) < EQ_THR) ? 0.0 : μ;
         penalty += 0.5 * g_eval.transpose() * Iμ.asDiagonal() * g_eval + 0.5 * μ * d[i].squaredNorm();
       }
-      g_eval = g_(x[NH], NH);
+      VectorU uN = VectorU::Zero();  // dummy control, ignored when i == NH
+      g_eval = g_(x[NH],  uN , NH);
       for (int j = 0; j < NC; ++j)
       Iμ(j,0) = (g_eval(j) < 0.0 && λ[NH](j) < EQ_THR) ? 0.0 : μ;
       penalty += 0.5 * g_eval.transpose() * Iμ.asDiagonal() * g_eval;
@@ -194,7 +237,8 @@ public:
     // evaluate constraints at terminal state
     if (g_)
     {
-      g_eval = g_(x[NH], NH);
+      VectorU uN = VectorU::Zero();  // dummy control, ignored when i == NH
+      g_eval = g_(x[NH], uN, NH);
       gx_eval = gx_(x[NH], NH);
       for (int j = 0; j < NC; ++j)
         Iμ(j,0) = (g_eval(j) < 0.0 && λ[NH](j) < EQ_THR) ? 0.0 : μ;
@@ -213,8 +257,8 @@ public:
     for (int i = NH-1; i >= 0; --i)
     {
       // evaluate dynamics
-      fx_eval = fx_(x[i], u[i]);
-      fu_eval = fu_(x[i], u[i]);
+      fx_eval = fx_(x[i], u[i], i);
+      fu_eval = fu_(x[i], u[i], i);
 
       // evaluate cost
       lx_eval  = Lx_ (x[i], u[i], i);
@@ -231,9 +275,22 @@ public:
       Qux.noalias() = lux_eval + fu_eval.transpose() * Vxx * fx_eval;
 
       // add constraint contributions if present
+      if (h_)
+      {
+        h_eval = h_(x[i], u[i]);
+        hx_eval = hx_(x[i], u[i]);
+        hu_eval = hu_(x[i], u[i]);
+  
+        Qx.noalias() += hx_eval.transpose() * (λh[i] + μ * h_eval);
+        Qu.noalias() += hu_eval.transpose() * (λh[i] + μ * h_eval);
+        Qxx.noalias() += hx_eval.transpose() * μ * hx_eval;
+        Quu.noalias() += hu_eval.transpose() * μ * hu_eval;
+        Qux.noalias() += hu_eval.transpose() * μ * hx_eval;
+      }
+
       if (g_)
       {
-        g_eval = g_(x[i], i);
+        g_eval = g_(x[i],  u[i], i);
         gx_eval = gx_(x[i], i);
         gu_eval = gu_(x[i], i);
         for (int j = 0; j < NC; ++j)
@@ -244,7 +301,6 @@ public:
         Qxx.noalias() += gx_eval.transpose() * Iμ.asDiagonal() * gx_eval;
         Quu.noalias() += gu_eval.transpose() * Iμ.asDiagonal() * gu_eval;
         Qux.noalias() += gu_eval.transpose() * Iμ.asDiagonal() * gx_eval;
-
       }
 
       // optimal gains
@@ -255,6 +311,7 @@ public:
       // update value function approximation
       Vx.noalias() = Qx - K[i].transpose() * Quu * k[i];
       Vxx.noalias() = Qxx - K[i].transpose() * Quu * K[i];
+
     }
   }
 
@@ -264,20 +321,26 @@ public:
     bool sufficient_decrease = false;
     x_new[0] = x[0];
     double alpha = alpha_0;
-    double cost = compute_cost(x, u) + compute_penalty(x, u, d);
+    
+    double cost = 0.0;
+    if (perform_line_search)
+      cost = compute_cost(x, u)+ compute_penalty(x, u, d);
     double cost_new = cost;
+
     while (true)
     {
       // forward pass
       for (int i = 0; i < NH; ++i)
       {
         u_new[i] = u[i] + alpha * k[i] + K[i] * (x_new[i] - x[i]);
-        x_new[i+1] = f_(x_new[i], u_new[i]) - (1.0 - alpha) * d[i+1];
+        x_new[i+1] = f_(x_new[i], u_new[i], i) - (1.0 - alpha) * d[i+1];
         d_new[i+1] = (1.0 - alpha) * d[i+1];
       }
 
-      cost_new = compute_cost(x_new, u_new) + compute_penalty(x_new, u_new, d_new);
-      if (cost_new < cost)
+      if (perform_line_search)
+        cost_new = compute_cost(x_new, u_new) + compute_penalty(x_new, u_new, d_new);
+
+      if (!perform_line_search || (cost_new < cost && !std::isnan(cost_new)))
       {
         // accept step
         x = x_new;
@@ -285,10 +348,19 @@ public:
         d = d_new;
         
         // update multipliers
+        if (h_)
+        {
+          for (int i = 0; i < NH; ++i)
+            λh[i] = λh[i] + alpha * μ * h_(x_new[i], u_new[i]);
+        }
         if (g_)
         {
-          for (int i = 0; i < NH+1; ++i)
-            λ[i] = (λ[i] + alpha * μ * g_(x_new[i], i)).cwiseMax(0.0);
+          for (int i = 0; i < NH; ++i)
+            λ[i] = (λ[i] + alpha * μ * g_(x_new[i],  u_new[i], i)).cwiseMax(0.0);
+
+          VectorU uN = VectorU::Zero();
+          λ[NH] = (λ[NH] + alpha * μ * g_(x_new[NH],  uN, NH)).cwiseMax(0.0);         // added
+
         }
         if (h_ter_)
           λter = λter + alpha * μ * h_ter_(x_new[NH]);
@@ -314,12 +386,16 @@ public:
   {
     auto start_time = std::chrono::high_resolution_clock::now();
 
+    // reset multipliers and penalty
+    μ = 1000000.0;
+    Iμ = Eigen::Matrix<double, NC, 1>::Ones();
+
     // initial forward pass
-    x = x_guess;
-    u = u_guess;
+    // x = x_guess;
+    // u = u_guess;
     x[0] = x_0;
     for (int i = 0; i < NH; ++i)
-      d[i+1].noalias() = f_(x[i], u[i]) - x[i+1];
+      d[i+1].noalias() = f_(x[i], u[i], i) - x[i+1];
 
     for (int iter = 0; iter < max_iters; ++iter)
     {
@@ -344,7 +420,7 @@ public:
   }
 
   // setters
-  void set_x_warmstart(const std::array<Eigen::Vector<double, NX>, NH+1>& xs) { x_guess = xs; }
-  void set_u_warmstart(const std::array<Eigen::Vector<double, NU>, NH>& us) { u_guess = us; }
+  void set_x_warmstart(const std::array<Eigen::Vector<double, NX>, NH+1>& xs) { x = xs; }
+  void set_u_warmstart(const std::array<Eigen::Vector<double, NU>, NH>& us) { u = us; }
   void set_initial_state(const Eigen::Matrix<double, NX, 1>& x0) { x_0 = x0; }
 };
