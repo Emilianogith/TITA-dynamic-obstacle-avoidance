@@ -13,11 +13,11 @@ COM_X_COL, COM_Y_COL, COM_Z_COL = 0, 1, 2
 PC_X_COL,  PC_Y_COL             = 6, 7
 
 # Columns in u.txt
-ACC_X_COL = 0
-ACC_Y_COL = 1
-FZ_COL    = 2
+ACC_X_COL = 9
+ACC_Y_COL = 10
+FZ_COL    = 5
 
-DT_MS = 2.0  # 0.002 s
+DT_MS = 1.0  # 0.002 s
 
 
 def parse_timestep(name: str):
@@ -76,8 +76,8 @@ for t, p in folders:
     pc_y.append(x0[PC_Y_COL])
 
     # store accelerations from u0
-    accx_hist.append(u0[ACC_X_COL])
-    accy_hist.append(u0[ACC_Y_COL])
+    accx_hist.append(x0[ACC_X_COL])
+    accy_hist.append(x0[ACC_Y_COL])
 
     # store vertical force
     fz_hist.append(u0[FZ_COL])
@@ -99,8 +99,8 @@ for t, p in folders:
         pred_pc_x  = pred_pc_x[:L]
         pred_pc_y  = pred_pc_y[:L]
 
-        pred_accx = u_data[:L, ACC_X_COL]
-        pred_accy = u_data[:L, ACC_Y_COL]
+        pred_accx = x_data[:L, ACC_X_COL]
+        pred_accy = x_data[:L, ACC_Y_COL]
         pred_fz   = u_data[:L, FZ_COL]
 
         pred_t = t + np.arange(1, L + 1, dtype=float) * DT_MS
@@ -179,12 +179,12 @@ ax_z.set_ylabel("z"); ax_z.grid(True); ax_z.legend()
 
 
 # NEW: accelerations
-(line_ax,)    = ax_ax.plot([], [], lw=2, label="acc_x")
+(line_ax,)    = ax_ax.plot([], [], lw=2, label="vel_x")
 (pred_ax,)    = ax_ax.plot([], [], lw=2, color='red', label="pred acc_x")
 (pt_ax,)      = ax_ax.plot([], [], marker='o', linestyle='')
 ax_ax.set_ylabel("acc_x"); ax_ax.grid(True); ax_ax.legend()
 
-(line_ay,)    = ax_ay.plot([], [], lw=2, label="acc_y")
+(line_ay,)    = ax_ay.plot([], [], lw=2, label="vel_y")
 (pred_ay,)    = ax_ay.plot([], [], lw=2, color='red', label="pred acc_y")
 (pt_ay,)      = ax_ay.plot([], [], marker='o', linestyle='')
 ax_ay.set_ylabel("acc_y"); ax_ay.grid(True); ax_ay.legend()
@@ -321,7 +321,7 @@ def update(i):
 
 
 ani = FuncAnimation(fig, update, frames=len(times),
-                    init_func=init, interval=10, blit=True, repeat=False)
+                    init_func=init, interval=120, blit=True, repeat=False)
 
 plt.tight_layout()
 plt.show()

@@ -107,10 +107,27 @@ void labrob::MPC::solve(Eigen::Vector<double, N_STATE> x0){
             + 2 * w_vh * Qp_z.Cv_com.transpose() * Qp_z.Cv_com;
   };
 
+  // // terminal constraint ----------------------------------------- //
+  // auto h_ter_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, QP_Z::NY, 1>
+  // {
+  //     Eigen::Matrix<double, QP_Z::NY, QP_Z::NX> H = Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>::Zero();
+  //     H = Qp_z.C_com;
+  //     Eigen::Matrix<double, QP_Z::NY, 1> hz = Eigen::Matrix<double, QP_Z::NY, 1>::Zero();
+  //     hz(0,0) = 0.4;
+  //     return H * x - hz;
+  // };
+
+  // auto h_terx_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>
+  // {
+  //     Eigen::Matrix<double, QP_Z::NY, QP_Z::NX> H = Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>::Zero();
+  //     H = Qp_z.C_com;
+  //     return H;
+  // };
+
 
 
     // initialize problem
-    auto solver_z = DdpSolver<QP_Z::NX, QP_Z::NU, 0, 0, 0, NH>(
+    auto solver_z = DdpSolver<QP_Z::NX, QP_Z::NU, 0, QP_Z::NY, 0, NH>(
     f_z, fx_z, fu_z,
     L_z, Lx_z, Lu_z, Lxx_z, Luu_z, Lux_z,
     L_ter_z, L_terx_z, L_terxx_z,

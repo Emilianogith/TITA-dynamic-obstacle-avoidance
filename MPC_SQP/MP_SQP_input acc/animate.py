@@ -15,9 +15,9 @@ PC_X_COL,  PC_Y_COL             = 6, 7
 # Columns in u.txt
 ACC_X_COL = 0
 ACC_Y_COL = 1
-FZ_COL    = 2
+FZ_COL    = 5
 
-DT_MS = 2.0  # 0.002 s
+DT_MS = 1.0  # 0.002 s
 
 
 def parse_timestep(name: str):
@@ -321,7 +321,7 @@ def update(i):
 
 
 ani = FuncAnimation(fig, update, frames=len(times),
-                    init_func=init, interval=10, blit=True, repeat=False)
+                    init_func=init, interval=120, blit=True, repeat=False)
 
 plt.tight_layout()
 plt.show()
