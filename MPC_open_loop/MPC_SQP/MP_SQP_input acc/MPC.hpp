@@ -54,12 +54,20 @@ class MPC {
         pcom_ref(2,i) = 0.4;
     }
 
+    for (int k = 0; k <= NH; ++k) {
+      X_prev[k].setZero();
+      if (k < NH){
+        U_prev[k].setZero(); // set m * grav for fz
+      }
+
+    }
+
     u_prev << 0.0,
               0.0,
-              m*grav,
               0.0,
               0.0,
-              0.0;
+              0.0,
+              m*grav;
 
     opti_ptr_ = std::make_shared<casadi::Opti>("nlp");
     auto p_opts = casadi::Dict();
@@ -123,6 +131,15 @@ class MPC {
         // opti_ptr_->subject_to(-fc[k](0) * (pc[k](1) - pcom[k](1)) + fc[k](1) * (pc[k](0) - pcom[k](0)) == 0);
 
 
+        // double box_size = 0.02;
+        // for (int i = 0; i < 2; ++i){
+        //    opti_ptr_->subject_to(pc[k](i) <= zmp_ref(i,k) + box_size);
+        //    opti_ptr_->subject_to(pc[k](i) >= zmp_ref(i,k) - box_size);
+        // }
+
+        // contact height constraint
+        opti_ptr_->subject_to(pc[k](2) == 0.0);
+
         // inequality constraint
         opti_ptr_->subject_to(fc[k](2) >= 0.0);
 
@@ -136,14 +153,14 @@ class MPC {
         fc_ref_DM(2) = m*grav;
           
         // cost function
-        cost += 15.0 * dot(pcom[k](0) - pcom_ref_DM(0), pcom[k](0) - pcom_ref_DM(0))
-              + 15.0 * dot(pcom[k](1) - pcom_ref_DM(1), pcom[k](1) - pcom_ref_DM(1))
-              + 40.0 * dot(pcom[k](2) - pcom_ref_DM(2), pcom[k](2) - pcom_ref_DM(2))
+        cost += 2.0 * dot(pcom[k](0) - pcom_ref_DM(0), pcom[k](0) - pcom_ref_DM(0))
+              + 2.0 * dot(pcom[k](1) - pcom_ref_DM(1), pcom[k](1) - pcom_ref_DM(1))
+              + 5.0 * dot(pcom[k](2) - pcom_ref_DM(2), pcom[k](2) - pcom_ref_DM(2))
               + 0.0001 * dot(vcom[k], vcom[k])
-              + 0.0 * dot(pc[k] - zmp_ref_DM, pc[k] - zmp_ref_DM)
-              + 0.000001 * dot(vc[k], vc[k])
-              + 1e-7 * dot(ac[k], ac[k])                              //1e-7 
-              + 1e-7 * dot(fc[k] - fc_ref_DM, fc[k] - fc_ref_DM);     //1e-7 
+              + 0.01 * dot(pc[k] - zmp_ref_DM, pc[k] - zmp_ref_DM)
+              + 0.00000001 * dot(vc[k], vc[k])
+              + 1e-9 * dot(ac[k], ac[k])                              //1e-7 
+              + 1e-9 * dot(fc[k] - fc_ref_DM, fc[k] - fc_ref_DM);     //1e-7 
     }
 
 
@@ -156,8 +173,8 @@ class MPC {
     // terminal cost 
      cost += 15.0 * dot(pcom[NH] - pcom_ref_DM_ter, pcom[NH] - pcom_ref_DM_ter)
             + 0.0001 * dot(vcom[NH], vcom[NH])
-            + 0.0 * dot(pc[NH] - zmp_ref_DM_ter, pc[NH] - zmp_ref_DM_ter)
-            + 0.0 * dot(vc[NH], vc[NH]);
+            + 0.0001 * dot(pc[NH] - zmp_ref_DM_ter, pc[NH] - zmp_ref_DM_ter)
+            + 0.00000001 * dot(vc[NH], vc[NH]);
 
 
     // terminal constraint
@@ -173,6 +190,9 @@ class MPC {
     opti_ptr_->subject_to(vcom[0] == p_x0(casadi::Slice(3,6)));
     opti_ptr_->subject_to(pc[0]   == p_x0(casadi::Slice(6,9)));
     opti_ptr_->subject_to(vc[0]   == p_x0(casadi::Slice(9,12)));
+
+
+    x_last = casadi::DM::zeros(opti_ptr_->x().numel(), 1);
 
 
   };
@@ -192,6 +212,8 @@ class MPC {
 
 
   void solve(Eigen::Vector<double, NX> x0);
+
+  void set_warm_start(casadi::DM p0);
 
   bool record_logs = false;
   double t_msec = 0.0;
@@ -217,6 +239,10 @@ private:
 
   // previous guess
   Eigen::Vector<double, NU> u_prev = Eigen::Vector<double, NU>::Zero();
+  std::array<Eigen::Matrix<double,NX,1>, NH+1> X_prev; 
+  std::array<Eigen::Matrix<double,NU,1>,  NH>  U_prev;
+
+  casadi::DM x_last;
 
   casadi::DM g = casadi::DM({0, 0, -grav});
   casadi::MX p_x0;

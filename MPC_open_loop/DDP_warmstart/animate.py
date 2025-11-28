@@ -15,7 +15,7 @@ PC_X_COL,  PC_Y_COL             = 6, 7
 # Columns in u.txt
 ACC_X_COL = 0
 ACC_Y_COL = 1
-FZ_COL    = 5
+FZ_COL    = 4
 
 DT_MS = 1.0  # 0.002 s
 
@@ -99,9 +99,9 @@ for t, p in folders:
         pred_pc_x  = pred_pc_x[:L]
         pred_pc_y  = pred_pc_y[:L]
 
-        pred_accx = u_data[:L, ACC_X_COL]
-        pred_accy = u_data[:L, ACC_Y_COL]
-        pred_fz   = u_data[:L, FZ_COL]
+        pred_accx = u_data[1:L, ACC_X_COL]
+        pred_accy = u_data[1:L, ACC_Y_COL]
+        pred_fz   = u_data[1:L, FZ_COL]
 
         pred_t = t + np.arange(1, L + 1, dtype=float) * DT_MS
 
@@ -301,9 +301,9 @@ def update(i):
         pred_pc_y.set_data(pred_t, pred_pc_y_list[i])
         pred_z.set_data(pred_t, pred_com_z_list[i])
 
-        pred_ax.set_data(pred_t, pred_accx_list[i])
-        pred_ay.set_data(pred_t, pred_accy_list[i])
-        pred_fz.set_data(pred_t, pred_fz_list[i])
+        pred_ax.set_data(pred_t[:-1], pred_accx_list[i])
+        pred_ay.set_data(pred_t[:-1], pred_accy_list[i])
+        pred_fz.set_data(pred_t[:-1], pred_fz_list[i])
     else:
         pred_x.set_data([], []);  pred_pc_x.set_data([], [])
         pred_y.set_data([], []);  pred_pc_y.set_data([], [])
@@ -321,7 +321,24 @@ def update(i):
 
 
 ani = FuncAnimation(fig, update, frames=len(times),
-                    init_func=init, interval=120, blit=True, repeat=False)
+                    init_func=init, interval=1, blit=False, repeat=False)
+
+# change blit to true if you want the animation faster
+
+anim_running = True  # global flag
+
+def toggle_animation(event):
+    global anim_running
+    # choose your key: here 's' for "start/stop"
+    if event.key == ' ':
+        if anim_running:
+            ani.event_source.stop()
+        else:
+            ani.event_source.start()
+        anim_running = not anim_running
+
+# connect the callback to key-press events on the figure
+fig.canvas.mpl_connect('key_press_event', toggle_animation)
 
 plt.tight_layout()
 plt.show()
