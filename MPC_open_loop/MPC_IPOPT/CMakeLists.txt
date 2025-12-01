@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(Eigen3 REQUIRED)
 find_package(pinocchio REQUIRED)
 
+
+
 # for casadi
 include_directories(/usr/local/include)
 link_directories(/usr/local/lib)
@@ -28,7 +30,6 @@ target_link_libraries(main
 pinocchio::pinocchio
 /usr/local/lib/libcasadi.dylib        # for casadi
 )
-
 
 
 

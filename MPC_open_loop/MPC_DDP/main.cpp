@@ -6,16 +6,6 @@
 int main(int argc, char** argv) {
     
     
-    
-    // Eigen::Vector<double, 12> x0 = Eigen::Vector<double, 12>::Zero();
-    
-    
-    // x0 << 0.002, 0.0003, 0.39,
-    //         0.01, -0.02,  -0.1,
-    //         0.0003, -0.0002, 0.0,
-    //         0.0, 0.0, 0.0; 
-    
-    
     Eigen::Vector<double, 10> x0 = Eigen::Vector<double, 10>::Zero();
     x0 << 0.002, 0.0003, 0.39,
     0.01, -0.02,  -0.1,

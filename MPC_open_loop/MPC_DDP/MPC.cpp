@@ -144,10 +144,10 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
         Eigen::Matrix<double, NY_zmp, 1> zmp_2D = C_zmp * x;
         Eigen::Matrix<double, NY_zmp, 1> zmp_error_2D = zmp_2D - zmp_ref.col(NH);
         Eigen::Matrix<double, 1, 1> ret;
-        ret(0,0) = w_ter * (w_z * zmp_error_2D.squaredNorm() + w_zd * vzmp_error_2D.squaredNorm() 
+        ret(0,0) = w_z * zmp_error_2D.squaredNorm() + w_zd * vzmp_error_2D.squaredNorm() 
         + w_cd * vcom_error_2D.squaredNorm()
         + w_h * hcom_error * hcom_error
-        + w_vh * hvcom_error * hvcom_error);
+        + w_vh * hvcom_error * hvcom_error;
         return ret;
     };
 
@@ -166,20 +166,20 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
 
         Eigen::Matrix<double, NY_zmp, 1> zmp_2D = C_zmp * x;
         Eigen::Matrix<double, NY_zmp, 1> zmp_error_2D = zmp_2D - zmp_ref.col(NH);
-        return w_ter * (2 * w_z * C_zmp.transpose() * zmp_error_2D 
+        return 2 * w_z * C_zmp.transpose() * zmp_error_2D 
               + 2 * w_zd * Cv_zmp.transpose() * vzmp_error_2D 
               + 2 * w_cd * Cv_com.topRows(2).transpose() * vcom_error_2D
               + 2 * w_h * C_com.row(2).transpose() * hcom_error
-              + 2 * w_vh * Cv_com.row(2).transpose() * hvcom_error);
+              + 2 * w_vh * Cv_com.row(2).transpose() * hvcom_error;
     };
 
     auto L_terxx = [this](const VectorX &x) -> Eigen::Matrix<double, NX, NX>
     {
-        return w_ter * (2 * w_z * C_zmp.transpose() * C_zmp 
+        return 2 * w_z * C_zmp.transpose() * C_zmp 
         + 2 * w_zd * Cv_zmp.transpose() * Cv_zmp
         + 2 * w_cd * Cv_com.topRows(2).transpose() * Cv_com.topRows(2)
         + 2 * w_h * C_com.row(2).transpose() * C_com.row(2)
-        + 2 * w_vh * Cv_com.row(2).transpose() * Cv_com.row(2));
+        + 2 * w_vh * Cv_com.row(2).transpose() * Cv_com.row(2);
     };
 
 
@@ -205,15 +205,11 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
         // // g(5,0) = - (zmp_error(2,0) + constraint_half_width);
 
 
+        Eigen::Matrix<double, NC, 1> g = Eigen::Matrix<double, NC, 1>::Zero();
+        g(0,0) = - u(4);
 
-        // g(0,0) = - (constraint_half_width - zmp_error(0,0));
-        // g(1,0) = - (constraint_half_width - zmp_error(1,0));
-        // g(2,0) = - (zmp_error(0,0) + constraint_half_width);
-        // g(3,0) = - (zmp_error(1,0) + constraint_half_width);
-        
-
-        // return g;
-        return Eigen::Matrix<double, NC, 1>::Zero();
+        return g;
+        // return Eigen::Matrix<double, NC, 1>::Zero();
     };
 
     auto gx = [this](const VectorX &x, const int &i) -> Eigen::Matrix<double, NC, NX>
@@ -226,7 +222,10 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
 
     auto gu = [this](const VectorX &x, const int &i) -> Eigen::Matrix<double, NC, NU>
     {
-        return Eigen::Matrix<double, NC, NU>::Zero();
+        Eigen::Matrix<double, NC, NU> Gu = Eigen::Matrix<double, NC, NU>::Zero();
+        Gu(0,4) = -1.0;
+        return Gu;
+        // return Eigen::Matrix<double, NC, NU>::Zero();
     };
 
     // ------------------------------------------------------------- //
@@ -256,9 +255,7 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
       pc(2) = z_c;
 
       Eigen::Matrix<double, NE, 1> ret = Eigen::Matrix<double, NE, 1>::Zero();
-      // ret.block(0,0,3,1) = (pc - pcom).cross(f_c);  // -[f_c]_x (C_pc - C_com) x =   [pc - pcom]_x (f_c)
-      ret(3,0) = f_c(2) - m * grav; // f_z = m*g
-
+      ret.block<3,1>(0,0) = (pc - pcom).cross(f_c);  // -[f_c]_x (C_pc - C_com) x =   [pc - pcom]_x (f_c)
       return ret;
     };
 
@@ -271,10 +268,8 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
       Eigen::Matrix<double,3,NX> C_pc = Eigen::Matrix<double,3,NX>::Zero();
       C_pc.topRows<2>() = C_zmp;
 
-
       Eigen::Matrix<double, NE, NX> H = Eigen::Matrix<double, NE, NX>::Zero();
-      // H.topRows(3) = -Sfc * (C_pc - C_com);
-
+      H = -Sfc * (C_pc - C_com);
       return H;
     };
 
@@ -289,9 +284,7 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
       const Eigen::Matrix3d S_r = pinocchio::skew(r);
 
       Eigen::Matrix<double, NE, NU> Hu = Eigen::Matrix<double, NE, NU>::Zero();
-      // Hu.block<3,3>(0,2) = S_r;
-      Hu(3,4) = 1.0;
-
+      Hu.block<3,3>(0,2) = S_r;
       return Hu;
     };
 
@@ -308,6 +301,20 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
         1e-1,
         0.5);
 
+
+    Eigen::Vector3d pcom = C_com * x0;
+    Eigen::Vector3d pc; 
+    pc.segment<2>(0) = C_zmp * x0; 
+    pc(2) = z_c;
+
+    // set the force initial guess colinear with the com
+    Eigen::Vector3d fc_not_scaled = pc-pcom;
+    Eigen::Vector3d fc_scaled = fc_not_scaled/ fc_not_scaled(2) * m*grav;
+    // Eigen::Vector3d fc_scaled = fc_not_scaled/ fc_not_scaled(2) * 533;
+    // u0.segment<2>(0) = Eigen::Vector2d(8.0, -8.0);
+    u0.setZero();
+    u0.segment<3>(2) = fc_scaled;
+    
 
     // set warm-start trajectories
     std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
@@ -326,7 +333,6 @@ void labrob::MPC::initSolver(Eigen::Vector<double, NX> x0) {
 }
 
 void labrob::MPC::solve(Eigen::Vector<double, NX> x0){
-
 
   auto x_dot = [this](const VectorX &x, const VectorU &u) -> VectorX
   {
@@ -360,6 +366,18 @@ void labrob::MPC::solve(Eigen::Vector<double, NX> x0){
     x_traj[i+1] = f(x_i, u_i);
     xdot_traj[i] = x_dot(x_i, u_i);
     u_traj[i] = u_i;
+
+    // to check the cross product
+    Eigen::Vector3d f_c = u_i.segment<3>(2);
+    Eigen::Vector3d pcom = C_com * x_i;
+    Eigen::Vector3d pc; 
+    pc.segment<2>(0) = C_zmp * x_i; 
+    pc(2) = z_c;
+    Eigen::Vector3d ret;
+    ret = (pc - pcom).cross(f_c);
+
+    std::cout << "ret " << ret << std::endl;
+
   }
 
   std::cout << "u_traj " << u_traj[0] << std::endl;

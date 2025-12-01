@@ -9,7 +9,7 @@ X_FILE = "x.txt"
 U_FILE = "u.txt"
 
 # Columns in x.txt
-COM_X_COL, COM_Y_COL, COM_Z_COL = 9, 10, 2
+COM_X_COL, COM_Y_COL, COM_Z_COL = 0, 1, 2
 PC_X_COL,  PC_Y_COL             = 6, 7
 
 # Columns in u.txt
@@ -321,7 +321,7 @@ def update(i):
 
 
 ani = FuncAnimation(fig, update, frames=len(times),
-                    init_func=init, interval=1, blit=False, repeat=False)
+                    init_func=init, interval=1, blit=True, repeat=False)
 
 # change blit to true if you want the animation faster
 

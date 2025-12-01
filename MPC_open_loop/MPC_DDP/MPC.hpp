@@ -29,12 +29,12 @@ struct SolutionMPC {
 
 class MPC {
   static constexpr int SOLVER_MAX_ITER = 1;         // 10
-  static constexpr int NX = 10;                      // state size
+  static constexpr int NX = 10;                     // state size
   static constexpr int NU = 5;                      // input size
-  static constexpr int NE = 4;                      // eq.
+  static constexpr int NE = 3;                      // eq.
   static constexpr int NY = 3;                      // terminal constraint size
   static constexpr int NY_zmp = 2;
-  static constexpr int NC = 2*(NY-1); //2 * NY;                 // inequality constraint size
+  static constexpr int NC = 2; //2*(NY-1); //2 * NY;                 // inequality constraint size
   static constexpr int NH = 400;          //400     // horizon length
   typedef Eigen::Matrix<double, NX, 1> VectorX;
   typedef Eigen::Matrix<double, NU, 1> VectorU;
@@ -80,11 +80,11 @@ class MPC {
 
     c << 0,0,0, 0,0,-grav, 0,0, 0,0;
 
-    u0 << 0.0,
-              0.0,
-              0.0,
-              0.0,
-              432.389;
+        // u0 << 1.0,       // works only with this
+        //       1.0,
+        //       1.0,
+        //       1.0,
+        //       500.389;
 
     initSolver(x0);
 
@@ -118,22 +118,21 @@ private:
   Eigen::Vector3d pos_com_, vel_com_, acc_com_, pos_zmp_, vel_zmp_, acc_zmp_;
 
   // parameters
-  double grav = 9.81;                 // gravity
-  double Δ = 0.002;      //0.002;      // time step
-
+  double grav = 9.81;                  // gravity
+  double Δ = 0.002;                    // time step
   double m = 44.0763;
+  double z_c = 0.0;
 
   // cost function weights
-  double w_z = 20.0;           //20.0     // ZMP tracking weight
-  double w_cd = 1.0;      //1.0           // COM vel tracking weight
-  double w_zd = 0.00001;  //0.00001       //0.001          // input weight
-  double w_acc = 1e-7;     //1e-12
+  double w_z = 20.0;                   // ZMP tracking weight
+  double w_cd = 1.0;                   // COM vel tracking weight
+  double w_zd = 0.00001;               // input weight
+  double w_acc = 1e-7;  
   
-  double w_fxy = 1e-7;    // 1e-12
-  double w_fz = 1e-7;      // 1e-4 
+  double w_fxy = 1e-8;    
+  double w_fz = 1e-8;
   
-  double w_ter = 1.0;
-  
+
   double w_h = 160.0;   // 5200.0
   double w_vh = 1.0;  // 60.0
 
@@ -152,8 +151,6 @@ private:
   Eigen::Matrix<double, NX, NX> A = Eigen::Matrix<double, NX, NX>::Zero();
   Eigen::Matrix<double, NX, NU> B = Eigen::Matrix<double, NX, NU>::Zero();
   Eigen::Matrix<double, NX, 1> c = Eigen::Matrix<double, NX, 1>::Zero();
-
-  double z_c = 0.0;
 
   // previous guess
   Eigen::Vector<double, NU> u0 = Eigen::Vector<double, NU>::Zero();
