@@ -39,9 +39,9 @@ private:
   double t_msec_ = 0;
 
 
+  labrob::walkingPlanner walkingPlanner_;
   labrob::MPC mpc_;
-  Eigen::Matrix<double, 2, 200+1> pc_ref;
-  Eigen::Matrix<double, 3, 200+1> pcom_ref;
+
 
   // Log files:
   // std::ofstream mpc_timings_log_file_;

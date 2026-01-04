@@ -8,6 +8,83 @@
 #include <WalkingManager.hpp>
 #include "MujocoUI.hpp"
 
+#include <cstring>
+
+
+static inline void mat3_mul_vec3(const mjtNum R[9], const mjtNum v[3], mjtNum out[3]) {
+  out[0] = R[0]*v[0] + R[3]*v[1] + R[6]*v[2];
+  out[1] = R[1]*v[0] + R[4]*v[1] + R[7]*v[2];
+  out[2] = R[2]*v[0] + R[5]*v[1] + R[8]*v[2];
+}
+
+void print_contacts(const mjModel* m, const mjData* d) {
+
+
+  Eigen::Vector3d f_r = Eigen::Vector3d::Zero();
+  Eigen::Vector3d f_l = Eigen::Vector3d::Zero();
+  
+  for (int i = 0; i < d->ncon; ++i) {
+    const mjContact& con = d->contact[i];
+
+    // contact force/torque in contact frame
+    mjtNum cf[6];
+    mj_contactForce(m, d, i, cf);
+
+    // names (optional)
+    const char* g1 = mj_id2name(m, mjOBJ_GEOM, con.geom1);
+    const char* g2 = mj_id2name(m, mjOBJ_GEOM, con.geom2);
+    if (!g1) g1 = "(null)";
+    if (!g2) g2 = "(null)";
+
+    // convert force and torque to world frame (optional)
+    mjtNum f_local[3] = {cf[0], cf[1], cf[2]};
+    mjtNum t_local[3] = {cf[3], cf[4], cf[5]};
+    mjtNum f_world[3], t_world[3];
+    mat3_mul_vec3(con.frame, f_local, f_world);
+    mat3_mul_vec3(con.frame, t_local, t_world);
+
+    std::printf("friction:\n");
+    std::printf("[%.6f %.6f %.6f %.6f %.6f]\n", (double)con.friction[0], (double)con.friction[1], (double)con.friction[2], (double)con.friction[3], (double)con.friction[4]);
+
+    std::printf("con.dim:\n");
+    std::printf("[%.6f]\n", (double)con.dim);
+
+  auto dump_geom = [&](int gid){
+  const mjtNum* fr = m->geom_friction + 3*gid;
+  printf("geom %d (%s): fric=[%.3f %.3f %.3f], condim=%d\n",
+         gid, mj_id2name(m, mjOBJ_GEOM, gid),
+         (double)fr[0], (double)fr[1], (double)fr[2],
+         m->geom_condim[gid]);
+  };
+
+  dump_geom(con.geom1);
+  dump_geom(con.geom2);
+
+    std::printf(
+      "contact %d: %s <-> %s | pos=[%.3f %.3f %.3f] | "
+      "F_local=[%.3f %.3f %.3f]  T_local=[%.3f %.3f %.3f] | "
+      "F_world=[%.3f %.3f %.3f]\n",
+      i, g1, g2,
+      con.pos[0], con.pos[1], con.pos[2],
+      (double)cf[0], (double)cf[1], (double)cf[2],
+      (double)cf[3], (double)cf[4], (double)cf[5],
+      (double)f_world[0], (double)f_world[1], (double)f_world[2]
+    );
+
+    if (g2 && std::strcmp(g2, "left_leg_4_collision") == 0) {
+      f_l += Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
+    }
+    if (g2 && std::strcmp(g2, "right_leg_4_collision") == 0) {
+      f_r += Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
+    }
+
+  }
+
+  std::cout << "f_l from mujoco " << f_l << std::endl;
+  std::cout << "f_r from mujoco " << f_r << std::endl;
+}
+
+
 
 void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep_counter){
   double point[3]{0.0, 0.0, 0.0};
@@ -31,7 +108,7 @@ int main() {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* mjcf_filepath = "../tita_mj_description/tita.mjcf";
+  const char* mjcf_filepath = "../tita_mj_description/tita_world.xml";
   mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
   if (!mj_model_ptr) {
     std::cerr << "Error loading model: " << loadError << std::endl;
@@ -57,7 +134,7 @@ int main() {
 
   mj_data_ptr->qpos[0] = 0.0;                                     // x
   mj_data_ptr->qpos[1] = 0.0;                                     // y
-  mj_data_ptr->qpos[2] = 0.399 + 0.05 - 0.005; // +0.02;(up-position) //-0.3;(upside-down-position) // z
+  mj_data_ptr->qpos[2] = 0.399 + 0.05 - 0.005 - 0.001; // +0.02;(up-position) //-0.3;(upside-down-position) // z
   mj_data_ptr->qpos[3] = 1.0;                                     // η
   mj_data_ptr->qpos[4] = 0.0; //1.0 for upside down               // ε_x
   mj_data_ptr->qpos[5] = 0.0;                                     // ε_y
@@ -101,8 +178,6 @@ int main() {
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
   double dt = mj_model_ptr->opt.timestep;   // simulation timestep
-  std::cout<< "simulation dt: " << dt << std::endl;
-  std::cout<< "simulation freq: " << 1.0/dt << std::endl;
 
   static int framerate = 60.0;
   bool first_frame = false;
@@ -116,7 +191,8 @@ int main() {
 
   mjtNum simstart = mj_data_ptr->time;
   while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
-
+    
+    mj_step1(mj_model_ptr, mj_data_ptr);
     labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
     
     // Walking manager
@@ -125,10 +201,8 @@ int main() {
 
     // apply a disturbance
     // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
-    ++timestep_counter;
-    
-    mj_step1(mj_model_ptr, mj_data_ptr);
-    
+    // ++timestep_counter;
+
     if (first_frame == true) {
       mujoco_ui.render();
       continue;
@@ -144,20 +218,13 @@ int main() {
       joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
     }
 
-
-    //  for (int i = 0; i < mj_data_ptr->ncon; i++)
-    //     {
-    //         const mjContact& con = mj_data_ptr->contact[i];
-
-    //         std::cout << "Contact " << i << ": ("
-    //                   << con.pos[0] << ", "
-    //                   << con.pos[1] << ", "
-    //                   << con.pos[2] << ")\n";
-    //     }
-
-
     mj_step2(mj_model_ptr, mj_data_ptr);
 
+    // print_contacts(mj_model_ptr, mj_data_ptr);
+
+    // Eigen::Map<const Eigen::VectorXd> qacc(mj_data_ptr->qacc, mj_model_ptr->nv);
+    // std::cout << "qacc = " << qacc.transpose() << std::endl;
+    
     
     joint_vel_log_file << std::endl;
     joint_eff_log_file << std::endl;
@@ -170,7 +237,7 @@ int main() {
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 
   // Stampa del tempo di esecuzione
-  std::cout << "Controller period: " << duration << " microseconds" << std::endl;
+  std::cout << "Controller period: " << duration << " us" << std::endl;
   
   
   double sim_elapsed = end_sim - simstart;

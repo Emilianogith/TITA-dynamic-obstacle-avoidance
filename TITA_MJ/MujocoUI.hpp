@@ -159,8 +159,8 @@ class MujocoUI {
 
     // Visualize contact points and contact forces
     opt_.flags[mjVIS_CONTACTPOINT] = false;
-    opt_.flags[mjVIS_CONTACTFORCE] = false;
-    opt_.flags[mjVIS_TRANSPARENT] = true;
+    opt_.flags[mjVIS_CONTACTFORCE] = true;
+    opt_.flags[mjVIS_TRANSPARENT] = false;
 
     cam_.distance = 10.0;
     cam_.azimuth = -25.0;

@@ -42,8 +42,6 @@ struct WholeBodyControllerParams {
   double cmm_selection_matrix_y;
   double cmm_selection_matrix_z;
 
-  double gamma;
-
   double mu;
 
   static WholeBodyControllerParams getDefaultParams();
@@ -63,6 +61,10 @@ class WholeBodyController {
       const labrob::DesiredConfiguration& desired
   );
 
+  double wheel_radius_;
+  double wheel_width_;
+  double wheel_length_;
+  
  private:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
@@ -86,8 +88,6 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
 
   double sample_time_;
-  double wheel_radius_;
-  double wheel_width_;
 
   WholeBodyControllerParams params_;
 

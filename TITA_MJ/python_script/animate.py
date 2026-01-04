@@ -14,11 +14,11 @@ PC_X_COL,  PC_Y_COL             = 6, 7
 
 # Columns in u.txt
 ACC_X_COL = 0
-ACC_Y_COL = 1
-FZ_COL    = 2
+FLZ_COL    = 5
+FRZ_COL    = 8
 
-DT_MS = 2.0  # 0.002 s
-
+# DT_MS = 2.0  # 0.002 s
+DT_MS = 10.0   # if dt in MPC is 0.01 s
 
 def parse_timestep(name: str):
     try: return float(name)
@@ -77,10 +77,10 @@ for t, p in folders:
 
     # store accelerations from u0
     accx_hist.append(u0[ACC_X_COL])
-    accy_hist.append(u0[ACC_Y_COL])
+    accy_hist.append(u0[FLZ_COL])
 
     # store vertical force
-    fz_hist.append(u0[FZ_COL])
+    fz_hist.append(u0[FRZ_COL])
 
     # predictions: rows 1..end
     if x_data.shape[0] >= 2:
@@ -99,9 +99,9 @@ for t, p in folders:
         pred_pc_x  = pred_pc_x[:L]
         pred_pc_y  = pred_pc_y[:L]
 
-        pred_accx = u_data[:L, ACC_X_COL]
-        pred_accy = u_data[:L, ACC_Y_COL]
-        pred_fz   = u_data[:L, FZ_COL]
+        pred_accx = u_data[1:L, ACC_X_COL]
+        pred_accy = u_data[1:L, FLZ_COL]
+        pred_fz   = u_data[1:L, FRZ_COL]
 
         pred_t = t + np.arange(1, L + 1, dtype=float) * DT_MS
 
@@ -179,22 +179,22 @@ ax_z.set_ylabel("z"); ax_z.grid(True); ax_z.legend()
 
 
 # NEW: accelerations
-(line_ax,)    = ax_ax.plot([], [], lw=2, label="acc_x")
-(pred_ax,)    = ax_ax.plot([], [], lw=2, color='red', label="pred acc_x")
+(line_ax,)    = ax_ax.plot([], [], lw=2, label="acc")
+(pred_ax,)    = ax_ax.plot([], [], lw=2, color='red', label="pred acc")
 (pt_ax,)      = ax_ax.plot([], [], marker='o', linestyle='')
-ax_ax.set_ylabel("acc_x"); ax_ax.grid(True); ax_ax.legend()
+ax_ax.set_ylabel("acc"); ax_ax.grid(True); ax_ax.legend()
 
-(line_ay,)    = ax_ay.plot([], [], lw=2, label="acc_y")
-(pred_ay,)    = ax_ay.plot([], [], lw=2, color='red', label="pred acc_y")
+(line_ay,)    = ax_ay.plot([], [], lw=2, label="fl_z")
+(pred_ay,)    = ax_ay.plot([], [], lw=2, color='red', label="pred fl_z")
 (pt_ay,)      = ax_ay.plot([], [], marker='o', linestyle='')
-ax_ay.set_ylabel("acc_y"); ax_ay.grid(True); ax_ay.legend()
+ax_ay.set_ylabel("fl_z"); ax_ay.grid(True); ax_ay.legend()
 
 
 # Force z
-(line_fz,)    = ax_fz.plot([], [], lw=2, label="f_z")
-(pred_fz,)    = ax_fz.plot([], [], lw=2, color='red', label="pred f_z")
+(line_fz,)    = ax_fz.plot([], [], lw=2, label="fr_z")
+(pred_fz,)    = ax_fz.plot([], [], lw=2, color='red', label="pred fr_z")
 (pt_fz,)      = ax_fz.plot([], [], marker='o', linestyle='')
-ax_fz.set_xlabel("t [ms]"); ax_fz.set_ylabel("f_z")
+ax_fz.set_xlabel("t [ms]"); ax_fz.set_ylabel("fr_z")
 ax_fz.grid(True); ax_fz.legend()
 
 
@@ -301,9 +301,9 @@ def update(i):
         pred_pc_y.set_data(pred_t, pred_pc_y_list[i])
         pred_z.set_data(pred_t, pred_com_z_list[i])
 
-        pred_ax.set_data(pred_t, pred_accx_list[i])
-        pred_ay.set_data(pred_t, pred_accy_list[i])
-        pred_fz.set_data(pred_t, pred_fz_list[i])
+        pred_ax.set_data(pred_t[:-1], pred_accx_list[i])
+        pred_ay.set_data(pred_t[:-1], pred_accy_list[i])
+        pred_fz.set_data(pred_t[:-1], pred_fz_list[i])
     else:
         pred_x.set_data([], []);  pred_pc_x.set_data([], [])
         pred_y.set_data([], []);  pred_pc_y.set_data([], [])
@@ -321,7 +321,24 @@ def update(i):
 
 
 ani = FuncAnimation(fig, update, frames=len(times),
-                    init_func=init, interval=10, blit=True, repeat=False)
+                    init_func=init, interval=1, blit=True, repeat=False)
+
+# change blit to true if you want the animation faster
+
+anim_running = True  # global flag
+
+def toggle_animation(event):
+    global anim_running
+    # choose your key: here 's' for "start/stop"
+    if event.key == ' ':
+        if anim_running:
+            ani.event_source.stop()
+        else:
+            ani.event_source.start()
+        anim_running = not anim_running
+
+# connect the callback to key-press events on the figure
+fig.canvas.mpl_connect('key_press_event', toggle_animation)
 
 plt.tight_layout()
 plt.show()

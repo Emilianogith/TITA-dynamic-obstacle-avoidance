@@ -1,5 +1,7 @@
 #include <utils.hpp>
 
+
+
 namespace labrob {
 
 Eigen::Matrix<double, 6, 1>
@@ -119,28 +121,45 @@ robot_state.total_force = sum;
 return robot_state;
 }
 
-Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
+
+
+Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
+  Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
   Eigen::Vector3d z_0 = Eigen::Vector3d(0,0,1);
   Eigen::Vector3d n = wheel_R * z_0;
-  Eigen::Vector3d t = (Eigen::Matrix3d::Identity() - n*n.transpose()) * z_0;
-  t = t/(t.norm()); // normalize
-  Eigen::Vector3d contact_point = wheel_center - t * wheel_radius;
-
-  Eigen::Vector3d rCP = contact_point-wheel_center;
+  Eigen::Vector3d a = (I - n*n.transpose()) * z_0;
+  Eigen::Vector3d s = a/a.norm(); // normalize
+  Eigen::Vector3d rCP = - s * wheel_radius;
   return rCP;
 }
-Eigen::Matrix3d compute_contact_frame(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
+
+
+Eigen::Matrix3d compute_virtual_frame(const Eigen::MatrixXd& wheel_R){
+  Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
   Eigen::Vector3d z_0 = Eigen::Vector3d(0,0,1);
-  Eigen::Vector3d s = wheel_R * z_0;
-  Eigen::Vector3d n = (Eigen::Matrix3d::Identity() - s*s.transpose()) * z_0;
-  n = n/(n.norm()); // normalize
-  Eigen::Vector3d t = s.cross(n);
-  t = t/(t.norm()); // normalize
+  Eigen::Vector3d n = wheel_R * z_0;
+  Eigen::Vector3d a = (I - n*n.transpose()) * z_0;
+  Eigen::Vector3d s = a / a.norm(); // normalize
+  Eigen::Vector3d t = n.cross(s);
+  t = t/t.norm(); // normalize
   Eigen::Matrix3d R;
   R.col(0) = t;  
-  R.col(1) = s;   
-  R.col(2) = n;
+  R.col(1) = n;   
+  R.col(2) = s;
   return R;
 }
+
+Eigen::Matrix3d compute_contact_frame(const Eigen::MatrixXd& wheel_R){
+  Eigen::Vector3d z_0 = Eigen::Vector3d(0,0,1);
+  Eigen::Vector3d n = wheel_R * z_0;
+  Eigen::Vector3d a = n.cross(z_0);
+  Eigen::Vector3d t = a / a.norm(); // normalize
+  Eigen::Matrix3d R;
+  R.col(0) = t;  
+  R.col(1) = z_0.cross(t);   
+  R.col(2) = z_0;
+  return R;
+}
+
 
 } // end namespace labrob

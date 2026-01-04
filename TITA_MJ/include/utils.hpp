@@ -31,7 +31,21 @@ robot_state_to_pinocchio_joint_velocity(
 
 RobotState robot_state_from_mujoco(mjModel* m, mjData* d);
 
-Eigen::Vector3d get_rCP(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
-Eigen::Matrix3d compute_contact_frame(const Eigen::Vector3d& wheel_center, const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
+Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
+Eigen::Matrix3d compute_virtual_frame(const Eigen::MatrixXd& wheel_R);
+Eigen::Matrix3d compute_contact_frame(const Eigen::MatrixXd& wheel_R);
+
+struct ZXYRPY {
+  double psi;      // about Z
+  double phi;      // about X
+  double chi;      // about Y
+  double psi_dot;
+  double phi_dot;
+  double chi_dot;
+};
+
+ZXYRPY rotmatAndOmegaToZXYRPY(const Eigen::Matrix3d& R, const Eigen::Vector3d& omega_world);
+
+
 
 } // end namespace labrob

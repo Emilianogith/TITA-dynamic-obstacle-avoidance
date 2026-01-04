@@ -1,476 +1,204 @@
 #include <MPC.hpp>
 
-void labrob::MPC::solve(Eigen::Vector<double, N_STATE> x0){
 
-  //QP-z
-  // ------------------------------------------------------------- //
-  // dynamics ---------------------------------------------------- //
+#include <chrono>
 
-  auto x_dot_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> QP_Z::VectorX
-  { return Qp_z.A * x + Qp_z.B * u + Qp_z.c;};
 
-  auto f_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> QP_Z::VectorX
-  { return x + Δ * (Qp_z.A * x + Qp_z.B * u + Qp_z.c);};
+double wrapToPi(double a) {
+  a = std::fmod(a + M_PI, 2.0 * M_PI);
+  if (a < 0) a += 2.0 * M_PI;
+  return a - M_PI;
+}
 
-  auto fx_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_Z::NX, QP_Z::NX>
-  { return Eigen::Matrix<double, QP_Z::NX, QP_Z::NX>::Identity() + Δ * Qp_z.A;};
+double unwrapNear(double theta_wrapped, double theta_prev) {
+  return theta_prev + wrapToPi(theta_wrapped - theta_prev);
+}
 
-  auto fu_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_Z::NX, QP_Z::NU>
-  { return Δ * Qp_z.B;};
+Eigen::Vector<double, labrob::MPC::NX> labrob::MPC::get_DFIP_state(Eigen::Vector<double, N_IN> x_IN,
+                                                                   bool set_d = false){
+  Eigen::Vector3d pcom       = x_IN.segment<3>(0);
+  Eigen::Vector3d vcom       = x_IN.segment<3>(3);
+  Eigen::Vector3d pl_world   = x_IN.segment<3>(6);
+  Eigen::Vector3d pr_world   = x_IN.segment<3>(9);
+  Eigen::Vector3d dpl_world  = x_IN.segment<3>(12);
+  Eigen::Vector3d dpr_world  = x_IN.segment<3>(15);
 
-  // ------------------------------------------------------------- //
-  // running cost ------------------------------------------------ //
+  Eigen::Vector3d c_world   = (pl_world + pr_world) / 2;
+  Eigen::Vector3d vc_world  = (dpl_world + dpr_world) / 2;
+
+  // extract theta
+  Eigen::Vector3d diff = pl_world - pr_world;
+  double theta_wrapped = atan2(-diff.x(), diff.y());
+  theta_prev_ = unwrapNear(theta_wrapped, theta_prev_);
+  double theta = theta_prev_;
+
+  Eigen::Matrix3d R = Eigen::Matrix3d::Zero();
+  R << cos(theta), -sin(theta), 0,
+  sin(theta), cos(theta),  0,
+  0, 0, 1;
   
-  auto L_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, 1, 1>
-  { 
-      double hcom = Qp_z.C_com * x;
-      double hcom_error = hcom - pcom_ref(2,i);
-      double hvcom = Qp_z.Cv_com * x;
-      double hvcom_error = hvcom - 0.0;
-
-      double fz_error = u(0) - m* grav;
-      
-      Eigen::Matrix<double, 1, 1> ret;
-      ret(0,0) = + w_h * hcom_error * hcom_error
-                 + w_vh * hvcom_error * hvcom_error
-                 + w_fc * fz_error * fz_error;
-      return ret;
-  };
-
-  auto Lx_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> QP_Z::VectorX
-  {
-      double hcom = Qp_z.C_com * x;
-      double hcom_error = hcom - pcom_ref(2,i);
-      double hvcom = Qp_z.Cv_com * x;
-      double hvcom_error = hvcom - 0.0;
-      
-      return 2 * w_h * Qp_z.C_com.transpose() * hcom_error
-             + 2 * w_vh * Qp_z.Cv_com.transpose() * hvcom_error;
-  };
-
-  auto Lu_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> QP_Z::VectorU
-  {
-      double fz_error = u(0) - m* grav;
-      QP_Z::VectorU ret = QP_Z::VectorU::Zero();
-      ret(0) = 2 * w_fc * fz_error;
-      return ret;
-  };
-
-  auto Lxx_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_Z::NX, QP_Z::NX>
-  {
-      return 2 * w_h * Qp_z.C_com.transpose() * Qp_z.C_com
-            + 2 * w_vh * Qp_z.Cv_com.transpose() * Qp_z.Cv_com;
-  };
-
-  auto Luu_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_Z::NU, QP_Z::NU>
-  {
-      Eigen::Matrix<double, QP_Z::NU, QP_Z::NU> ret = Eigen::Matrix<double, QP_Z::NU, QP_Z::NU>::Zero();
-      ret(0,0)   = 2 * w_fc ; 
-      return ret;
-  };
-
-  auto Lux_z = [this](const QP_Z::VectorX &x, const QP_Z::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_Z::NU, QP_Z::NX>
-  {
-      return Eigen::Matrix<double, QP_Z::NU, QP_Z::NX>::Zero();
-  };
-
-  // ------------------------------------------------------------- //
-  // terminal cost ----------------------------------------------- //
-
-  auto L_ter_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, 1, 1>
-  {
-      double hcom = Qp_z.C_com * x;
-      double hcom_error = hcom - pcom_ref(2,NH);
-      double hvcom = Qp_z.Cv_com * x;
-      double hvcom_error = hvcom - 0.0;
-
-      Eigen::Matrix<double, 1, 1> ret;
-      ret(0,0) = w_h * hcom_error * hcom_error
-                + w_vh * hvcom_error * hvcom_error;
-      return ret;
-  };
-
-  auto L_terx_z = [this](const QP_Z::VectorX &x) -> QP_Z::VectorX
-  {
-      double hcom = Qp_z.C_com * x;
-      double hcom_error = hcom - pcom_ref(2,NH);
-      double hvcom = Qp_z.Cv_com * x;
-      double hvcom_error = hvcom - 0.0;
-
-      return 2 * w_h * Qp_z.C_com.transpose() * hcom_error
-             + 2 * w_vh * Qp_z.Cv_com.transpose() * hvcom_error;
-  };
-
-  auto L_terxx_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, QP_Z::NX, QP_Z::NX>
-  {
-      return 2 * w_h * Qp_z.C_com.transpose() * Qp_z.C_com
-            + 2 * w_vh * Qp_z.Cv_com.transpose() * Qp_z.Cv_com;
-  };
-
-  // // terminal constraint ----------------------------------------- //
-  // auto h_ter_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, QP_Z::NY, 1>
-  // {
-  //     Eigen::Matrix<double, QP_Z::NY, QP_Z::NX> H = Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>::Zero();
-  //     H = Qp_z.C_com;
-  //     Eigen::Matrix<double, QP_Z::NY, 1> hz = Eigen::Matrix<double, QP_Z::NY, 1>::Zero();
-  //     hz(0,0) = 0.4;
-  //     return H * x - hz;
-  // };
-
-  // auto h_terx_z = [this](const QP_Z::VectorX &x) -> Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>
-  // {
-  //     Eigen::Matrix<double, QP_Z::NY, QP_Z::NX> H = Eigen::Matrix<double, QP_Z::NY, QP_Z::NX>::Zero();
-  //     H = Qp_z.C_com;
-  //     return H;
-  // };
-
-
-
-    // initialize problem
-    auto solver_z = DdpSolver<QP_Z::NX, QP_Z::NU, 0, QP_Z::NY, 0, NH>(
-    f_z, fx_z, fu_z,
-    L_z, Lx_z, Lu_z, Lxx_z, Luu_z, Lux_z,
-    L_ter_z, L_terx_z, L_terxx_z,
-    nullptr, nullptr,
-    nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr,
-    true,
-    SOLVER_MAX_ITER,
-    1.0,
-    1e-1,
-    0.5); 
-
-
-  Eigen::Vector<double, QP_Z::NX> x0_z = Eigen::Vector<double, QP_Z::NX>::Zero();
-  x0_z(0) = x0(2);
-  x0_z(1) = x0(5);
-
-  std::array<Eigen::Vector<double, QP_Z::NX>, NH+1> z_traj;
-  z_traj[0] = x0_z;
-  std::array<Eigen::Vector<double, QP_Z::NU>, NH  > fz_traj;
-  std::array<Eigen::Vector<double, QP_Z::NX>, NH  > zdot_traj;
-
-  // set warm-start trajectories
-  std::array<Eigen::Vector<double, QP_Z::NX>, NH+1> z_guess;
-  for (int i = 0; i < NH+1; ++i)
-    z_guess[i] = x0_z;
-  std::array<Eigen::Vector<double, QP_Z::NU>, NH> fz_guess;
-  for (int i = 0; i < NH; ++i)
-    fz_guess[i] = Qp_z.u_prev;
-
-  solver_z.set_initial_state(x0_z);
-  solver_z.set_x_warmstart(z_guess);
-  solver_z.set_u_warmstart(fz_guess);
-
-  // solve DDP
-  solver_z.solve();
-
-  // integrate dynamics
-  for (int i = 0; i < NH; ++i) {
-    QP_Z::VectorX x_i = z_traj[i];
-    QP_Z::VectorU u_i = solver_z.u[i];
-    z_traj[i+1] = f_z(x_i, u_i, i);
-    zdot_traj[i] = x_dot_z(x_i, u_i, i);
-    fz_traj[i] = u_i;
+  if(set_d){
+    // body-frame positions:
+    Eigen::Vector3d pl_body = R.transpose() * pl_world;
+    Eigen::Vector3d pr_body = R.transpose() * pr_world;
+    // unicycle offset
+    d = (pl_body - pr_body).norm();
   }
 
-  // std::cout << "fz_traj " << fz_traj[0] << std::endl;
+  // body-frame velocities:
+  Eigen::Vector3d dpl_body = R.transpose() * dpl_world;
+  Eigen::Vector3d dpr_body = R.transpose() * dpr_world;
 
-  const auto& z_prediction = z_traj[1];
-  const auto& zdot_prediction = zdot_traj[1];
-  const auto& fz_prediction = fz_traj[0];
+  // differential drive inputs
+  double w = (dpr_body.x() - dpl_body.x()) / d;
+  double v = (dpr_body.x() + dpl_body.x()) / 2;
 
-  Qp_z.u_prev = fz_prediction;
+  Eigen::Vector<double, NX> x0 = Eigen::Vector<double, NX>::Zero();
+  x0.segment<3>(0) = pcom;
+  x0.segment<3>(3) = vcom;
+  x0.segment<3>(6) = c_world;
+  x0(9)  = vc_world.z();
+  x0(10) = theta;
+  x0(11)  = v;
+  x0(12)  = w;
+  return x0;
+}
 
+void labrob::MPC::init_solver(Eigen::Vector<double, N_IN> x_IN){
 
+  auto x0 = get_DFIP_state(x_IN, true);
 
-
-
-  //QP-xy
-  // dynamics ---------------------------------------------------- //
-
-  auto x_dot_xy = [this, &z_traj, &zdot_traj](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> QP_XY::VectorX
-  {
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NX> A = Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>::Zero();
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NU> B = Eigen::Matrix<double, QP_XY::NX, QP_XY::NU>::Zero();
-      Eigen::Matrix<double, 2, 2> I2 = Eigen::Matrix<double, 2, 2>::Identity();
-
-      double ddz_com = zdot_traj[i](1);
-      double z_com = z_traj[i](0);
-      double lambda = (ddz_com + grav) / (z_com + z_c);
-      A.block<2,2>(0,2) = I2;
-      A.block<2,2>(2,0) = lambda * I2;
-      A.block<2,2>(2,4) = -lambda * I2;
-      A.block<2,2>(4,6) = I2;
-      B.block<2,2>(6,0) = I2;
-      return A * x + B * u;
-  };
-
-  auto f_xy = [this, &z_traj, &zdot_traj](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> QP_XY::VectorX
-  {
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NX> A = Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>::Zero();
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NU> B = Eigen::Matrix<double, QP_XY::NX, QP_XY::NU>::Zero();
-      Eigen::Matrix<double, 2, 2> I2 = Eigen::Matrix<double, 2, 2>::Identity();
-
-      double ddz_com = zdot_traj[i](1);
-      double z_com = z_traj[i](0);
-
-      double lambda = (ddz_com + grav) / (z_com + z_c);
-      A.block<2,2>(0,2) = I2;
-      A.block<2,2>(2,0) = lambda * I2;
-      A.block<2,2>(2,4) = -lambda * I2;
-      A.block<2,2>(4,6) = I2;
-      B.block<2,2>(6,0) = I2;
-      return x + Δ * (A * x + B * u);
-  };
-
-  auto fx_xy = [this, &z_traj, &zdot_traj](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>
-  {
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NX> A = Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>::Zero();
-      Eigen::Matrix<double, 2, 2> I2 = Eigen::Matrix<double, 2, 2>::Identity();
-
-      double ddz_com = zdot_traj[i](1);
-      double z_com = z_traj[i](0);
-      double lambda = (ddz_com + grav) / (z_com + z_c);
-      A.block<2,2>(0,2) = I2;
-      A.block<2,2>(2,0) = lambda * I2;
-      A.block<2,2>(2,4) = -lambda * I2;
-      A.block<2,2>(4,6) = I2;
-      return Eigen::Matrix<double,QP_XY::NX,QP_XY::NX>::Identity() + Δ * A;
-  };
-
-  auto fu_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_XY::NX, QP_XY::NU>
-  {
-      Eigen::Matrix<double, QP_XY::NX, QP_XY::NU> B = Eigen::Matrix<double, QP_XY::NX, QP_XY::NU>::Zero();
-      Eigen::Matrix<double, 2, 2> I2 = Eigen::Matrix<double, 2, 2>::Identity();
-      B.block<2,2>(6,0) = I2;
-      return Δ * B;
-  };
-
-
-  auto L_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, 1, 1>
-  {       
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_2D = Qp_xy.C_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_error_2D = pcom_2D - pcom_ref.col(i).segment<2>(0);
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_2D = Qp_xy.Cv_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_error_2D = vcom_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_2D = Qp_xy.Cv_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_error_2D = vpc_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_2D = Qp_xy.C_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_error_2D = pc_2D - pc_ref.col(i);
-      Eigen::Matrix<double, 1, 1> ret;
-      ret(0,0) = w_z * pc_error_2D.squaredNorm() 
-                + w_c * pcom_error_2D.squaredNorm()
-                + w_cd * vcom_error_2D.squaredNorm()
-                + w_zd * vpc_error_2D.squaredNorm()
-                + w_acc * u.squaredNorm();
-      return ret;
-  };
-
-  auto Lx_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> QP_XY::VectorX
-  { 
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_2D = Qp_xy.C_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_error_2D = pcom_2D - pcom_ref.col(i).segment<2>(0);
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_2D = Qp_xy.Cv_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_error_2D = vcom_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_2D = Qp_xy.Cv_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_error_2D = vpc_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_2D = Qp_xy.C_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_error_2D = pc_2D - pc_ref.col(i);
-      return 2 * w_z * Qp_xy.C_pc.transpose() * pc_error_2D
-             + 2 * w_c * Qp_xy.C_com.transpose() * pcom_error_2D
-             + 2 * w_zd * Qp_xy.Cv_pc.transpose() * vpc_error_2D 
-             + 2 * w_cd * Qp_xy.Cv_com.transpose() * vcom_error_2D;
-  };
-
-  auto Lu_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> QP_XY::VectorU
-  {
-      return 2 * w_acc * u;
-  };
-
-  auto Lxx_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>
-  {
-      return 2 * w_z * Qp_xy.C_pc.transpose() * Qp_xy.C_pc 
-      + 2 * w_c * Qp_xy.C_com.transpose() * Qp_xy.C_com 
-      + 2 * w_zd * Qp_xy.Cv_pc.transpose() * Qp_xy.Cv_pc 
-      + 2 * w_cd * Qp_xy.Cv_com.transpose() * Qp_xy.Cv_com;
-  };
-
-  auto Luu_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_XY::NU, QP_XY::NU>
-  {
-      return 2 * w_acc * Eigen::Matrix2d::Identity();;
-  };
-
-  auto Lux_xy = [this](const QP_XY::VectorX &x, const QP_XY::VectorU &u, const int &i) -> Eigen::Matrix<double, QP_XY::NU, QP_XY::NX>
-  {
-      return Eigen::Matrix<double, QP_XY::NU, QP_XY::NX>::Zero();
-  };
-
-  // ------------------------------------------------------------- //
-  // terminal cost ----------------------------------------------- //
-
-  auto L_ter_xy = [this](const QP_XY::VectorX &x) -> Eigen::Matrix<double, 1, 1>
-  {
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_2D = Qp_xy.C_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_error_2D = pcom_2D - pcom_ref.col(NH).segment<2>(0);
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_2D = Qp_xy.Cv_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_error_2D = vcom_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_2D = Qp_xy.Cv_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_error_2D = vpc_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_2D = Qp_xy.C_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_error_2D = pc_2D - pc_ref.col(NH);
-      Eigen::Matrix<double, 1, 1> ret;
-      ret(0,0) = w_z * pc_error_2D.squaredNorm() 
-      + w_c * pcom_error_2D.squaredNorm() 
-      + w_zd * vpc_error_2D.squaredNorm() 
-      + w_cd * vcom_error_2D.squaredNorm();
-      return ret;
-  };
-
-  auto L_terx_xy = [this](const QP_XY::VectorX &x) -> QP_XY::VectorX
-  {
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_2D = Qp_xy.C_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pcom_error_2D = pcom_2D - pcom_ref.col(NH).segment<2>(0);
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_2D = Qp_xy.Cv_com * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vcom_error_2D = vcom_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_2D = Qp_xy.Cv_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> vpc_error_2D = vpc_2D;
-
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_2D = Qp_xy.C_pc * x;
-      Eigen::Matrix<double, QP_XY::NY, 1> pc_error_2D = pc_2D - pc_ref.col(NH);
-      return 2 * w_z * Qp_xy.C_pc.transpose() * pc_error_2D 
-             + 2 * w_c * Qp_xy.C_com.transpose() * pcom_error_2D
-             + 2 * w_zd * Qp_xy.Cv_pc.transpose() * vpc_error_2D 
-             + 2 * w_cd * Qp_xy.Cv_com.transpose() * vcom_error_2D;
-  };
-
-  auto L_terxx_xy = [this](const QP_XY::VectorX &x) -> Eigen::Matrix<double, QP_XY::NX, QP_XY::NX>
-  {
-      return 2 * w_z * Qp_xy.C_pc.transpose() * Qp_xy.C_pc 
-      + 2 * w_c * Qp_xy.C_com.transpose() * Qp_xy.C_com 
-      + 2 * w_zd * Qp_xy.Cv_pc.transpose() * Qp_xy.Cv_pc 
-      + 2 * w_cd * Qp_xy.Cv_com.transpose() * Qp_xy.Cv_com;
-  };
-
-
-  // ------------------------------------------------------------- //
-  // terminal constraint ----------------------------------------- //
-
-  auto h_ter = [this](const QP_XY::VectorX &x) -> Eigen::Matrix<double, QP_XY::NY, 1>
-  {
-      Eigen::Matrix<double, QP_XY::NY, QP_XY::NX> H = Eigen::Matrix<double, QP_XY::NY, QP_XY::NX>::Zero();
-      H = Qp_xy.C_com - Qp_xy.C_pc;
-      return H * x;
-  };
-
-  auto h_terx = [this](const QP_XY::VectorX &x) -> Eigen::Matrix<double, QP_XY::NY, QP_XY::NX>
-  {
-      Eigen::Matrix<double, QP_XY::NY, QP_XY::NX> H = Eigen::Matrix<double, QP_XY::NY, QP_XY::NX>::Zero();
-      H = Qp_xy.C_com - Qp_xy.C_pc;
-      return H;
-  };
-
-
-
-
-  // initialize problem
-  auto solver_xy = DdpSolver<QP_XY::NX, QP_XY::NU, 0, QP_XY::NY, 0, NH>(
-    f_xy, fx_xy, fu_xy,
-    L_xy, Lx_xy, Lu_xy, Lxx_xy, Luu_xy, Lux_xy,
-    L_ter_xy, L_terx_xy, L_terxx_xy,
-    h_ter, h_terx,
-    nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr,
-    true,
-    SOLVER_MAX_ITER,
-    1.0,
-    1e-1,
-    0.5); 
-
-
-  Eigen::Vector<double, QP_XY::NX> x0_xy = Eigen::Vector<double, QP_XY::NX>::Zero();
-  x0_xy.segment<2>(0) = x0.segment<2>(0);
-  x0_xy.segment<2>(2) = x0.segment<2>(3);
-  x0_xy.segment<4>(4) = x0.segment<4>(6);
-
-
-  std::array<Eigen::Vector<double, QP_XY::NX>, NH+1> xy_traj;
-  xy_traj[0] = x0_xy;
-  std::array<Eigen::Vector<double, QP_XY::NU>, NH  > acc_traj;
-  std::array<Eigen::Vector<double, QP_XY::NX>, NH  > xydot_traj;
-
-  // set warm-start trajectories
-  std::array<Eigen::Vector<double, QP_XY::NX>, NH+1> xy_guess;
-  for (int i = 0; i < NH+1; ++i)
-    xy_guess[i] = x0_xy;
-  std::array<Eigen::Vector<double, QP_XY::NU>, NH> acc_guess;
-  for (int i = 0; i < NH; ++i)
-    acc_guess[i] = Qp_xy.u_prev;
-
-  solver_xy.set_initial_state(x0_xy);
-  solver_xy.set_x_warmstart(xy_guess);
-  solver_xy.set_u_warmstart(acc_guess);
-
-  // solve DDP
-  solver_xy.solve();
-
-  // integrate dynamics
-  for (int i = 0; i < NH; ++i) {
-    QP_XY::VectorX x_i = xy_traj[i];
-    QP_XY::VectorU u_i = solver_xy.u[i];
-    xy_traj[i+1] = f_xy(x_i, u_i, i);
-    xydot_traj[i] = x_dot_xy(x_i, u_i, i);
-    acc_traj[i] = u_i;
-  }
-
-  // std::cout << "acc_traj " << acc_traj[0] << std::endl;
-
-  const auto& xy_prediction = xy_traj[1];
-  const auto& xydot_prediction = xydot_traj[1];
-  const auto& acc_prediction = acc_traj[0];
-
-  Qp_xy.u_prev = acc_prediction;
-
-
-  // MPC output reconstruction
-  pos_com_ = Eigen::Vector3d(xy_prediction(0), xy_prediction(1), z_prediction(0));
-  vel_com_ = Eigen::Vector3d(xy_prediction(2), xy_prediction(3), z_prediction(1));
-  acc_com_ = Eigen::Vector3d(xydot_prediction(2), xydot_prediction(3), zdot_prediction(1));
-  pos_pc_ = Eigen::Vector3d(xy_prediction(4), xy_prediction(5), 0.0);
-  vel_pc_ = Eigen::Vector3d(xy_prediction(6), xy_prediction(7), 0.0);
-  acc_pc_ = Eigen::Vector3d(acc_prediction(0), acc_prediction(1), 0.0);
-
-
-  std::array<Eigen::Vector<double, N_STATE>, NH+1> x_traj;
-  x_traj[0] = x0;
-  std::array<Eigen::Vector<double, N_OUTPUT>, NH  > u_traj;
+  // stack running models
+  std::vector<std::shared_ptr<ActionModelAbstract>> runningModels;
+  runningModels.reserve(NH);
+  di_models_.reserve(NH);
 
   for (int i = 0; i < NH; ++i) {
-    x_traj[i+1].segment<2>(0) = xy_traj[i+1].segment<2>(0);
-    x_traj[i+1](2) = z_traj[i+1](0);
-    x_traj[i+1].segment<2>(3) = xy_traj[i+1].segment<2>(2);
-    x_traj[i+1](5) = z_traj[i+1](1);
-    x_traj[i+1].segment<2>(6) = xy_traj[i+1].segment<2>(4);
-    x_traj[i+1].segment<2>(8) = xy_traj[i+1].segment<2>(6);
-
-    u_traj[i].segment<2>(0) = acc_traj[i];
-    u_traj[i](2) = fz_traj[i](0);
+    auto model = std::make_shared<DFIPActionModel>(NX, NU, Δ, d, m);
+    di_models_.push_back(model);
+    runningModels.push_back(model);
   }
+  
+  // terminal model 
+  terminalModel_ = std::make_shared<DFIPActionModel>(NX, 0, Δ, d, m);
+  
+  problemPtr_ = std::make_shared<ShootingProblem>(x0, runningModels, terminalModel_);
+  
+  // Initialize the FDDP solver
+  solver = std::make_shared<SolverFDDP>(problemPtr_);
+
+  // Initialize guess trajectory
+  xs.resize(NH + 1, x0);
+  us.resize(NH, Eigen::VectorXd::Zero(NU));
+
+  Eigen::VectorXd fl0 = Eigen::Vector3d::Zero();
+  Eigen::VectorXd fr0 = Eigen::Vector3d::Zero();
+  fl0(2) = m*grav/2;
+  fr0(2) = m*grav/2;
+  for (int i =0; i < NH; ++i ){
+    us[i].segment<3>(3) = fl0;
+    us[i].segment<3>(6) = fr0;
+  }
+}
+
+void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
+
+  // update reference in the Action models
+  update_actionModel();
+
+  // set x0
+  auto x0 = get_DFIP_state(x_IN);
+  problemPtr_->set_x0(x0);
+
+  auto t0 = std::chrono::high_resolution_clock::now();
+
+  // solve the problem
+  xs[0] = x0;   // to improve feasibility
+  solver->solve(xs, us, SOLVER_MAX_ITER);
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> ms = t1 - t0;
+  // std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
 
 
-  // logs
-  if (record_logs){
+
+
+  // get solution
+  auto x_traj = solver->get_xs();
+  auto u_traj = solver->get_us();
+
+  // Shift by one guess trajectory
+  for (unsigned int i = 0; i < NH; ++i)
+      xs[i] = x_traj[i + 1];  
+  xs[NH] = x_traj[NH]; 
+
+  for (unsigned int i = 0; i < NH - 1; ++i)
+      us[i] = u_traj[i + 1];
+  us[NH - 1] = u_traj[NH- 1]; 
+
+
+
+  // Build solution
+  const auto& u_prediction = u_traj[0];
+
+  // inputs 
+  double a            = u_prediction(0);
+  double ac_z         = u_prediction(1);
+  double alpha        = u_prediction(2);
+  Eigen::Vector3d fcl = u_prediction.segment<3>(3);
+  Eigen::Vector3d fcr = u_prediction.segment<3>(6);
+
+  // current state
+  Eigen::Vector3d pcom_curr = x_IN.segment<3>(0);
+  Eigen::Vector3d vcom_curr = x_IN.segment<3>(3);
+  Eigen::Vector3d pl_curr   = x_IN.segment<3>(6);
+  Eigen::Vector3d pr_curr   = x_IN.segment<3>(9);
+  Eigen::Vector3d dpl_curr  = x_IN.segment<3>(12);
+  Eigen::Vector3d dpr_curr  = x_IN.segment<3>(15);
+
+  double theta_curr = x0(10);
+  double v_curr     = x0(11);
+  double w_curr     = x0(12);
+
+  Eigen::Vector3d g_vec = Eigen::Vector3d(0,0,-grav);
+
+  Eigen::Vector3d vector_off = Eigen::Vector3d(0.0, d/2, 0.0);
+  Eigen::Matrix3d dR_curr = Eigen::Matrix3d::Zero();
+  dR_curr << -sin(theta_curr), -cos(theta_curr), 0,
+        cos(theta_curr), -sin(theta_curr),  0,
+        0, 0, 0;
+
+  Eigen::Matrix3d ddR_curr = Eigen::Matrix3d::Zero();
+  ddR_curr << -cos(theta_curr), sin(theta_curr), 0,
+        -sin(theta_curr), -cos(theta_curr),  0,
+        0, 0, 0;
+
+  Eigen::Vector3d ddc;
+  ddc(0) = a * cos(theta_curr) - v_curr * sin(theta_curr) * w_curr;
+  ddc(1) = a * sin(theta_curr) + v_curr * cos(theta_curr) * w_curr;
+  ddc(2) = ac_z;
+
+  // integrate inputs
+  acc_com_ = 1/m * (fcl + fcr) + g_vec;
+  vel_com_ = vcom_curr + dt_ * acc_com_;
+  pos_com_ = pcom_curr + dt_ * vel_com_;
+  
+  acc_pl_  = ddc + (ddR_curr * w_curr * w_curr + dR_curr * alpha) * vector_off;
+  vel_pl_  = dpl_curr + dt_ * acc_pl_;
+  pos_pl_  = pl_curr + dt_ * vel_pl_;
+  
+  acc_pr_  = ddc - (ddR_curr * w_curr * w_curr + dR_curr * alpha) * vector_off;
+  vel_pr_  = dpr_curr + dt_ * acc_pr_;
+  pos_pr_  = pr_curr + dt_ * vel_pr_;
+  
+  alpha_   = alpha;
+  omega_   = w_curr + dt_ * alpha_;
+  theta_   = theta_curr +  dt_ * omega_;
+
+
+
+
+  if(record_logs){
     // create folder if it does not exist
     std::string folder = "/tmp/mpc_data/" + std::to_string(t_msec);
     std::string command = "mkdir -p " + folder;
@@ -483,7 +211,6 @@ void labrob::MPC::solve(Eigen::Vector<double, N_STATE> x0){
       file_x << x_traj[i].transpose() << std::endl;
     }
     file_x.close();
-    
     std::string path_u = "/tmp/mpc_data/" + std::to_string(t_msec) + "/u.txt";
     std::ofstream file_u(path_u);
     for (int i = 0; i < NH; ++i) {
@@ -493,6 +220,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_STATE> x0){
 
     record_logs = false;
   }
+   
 }
 
 
@@ -501,8 +229,18 @@ void labrob::MPC::solve(Eigen::Vector<double, N_STATE> x0){
 
 
 
+void labrob::MPC::update_actionModel(){
+  const double dt_ms = Δ * 1000.0;     // Delta in seconds
+  const double t0_ms = t_msec;         // current time in ms
 
-
-
-
-
+  // running stages
+  for (int i = 0; i < NH; ++i) {
+      double t_prevision = t_msec + dt_ms * i;
+      di_models_[i]->setReference(walkingPlanner_ptr_->get_xref_at_time_ms(t_prevision),
+                                  walkingPlanner_ptr_->get_uref_at_time_ms(t_prevision));
+  }
+    
+  // terminal stage
+  double t_prevision = t_msec + dt_ms * NH;
+  terminalModel_->setReference(walkingPlanner_ptr_->get_xref_at_time_ms(t_prevision));   
+}

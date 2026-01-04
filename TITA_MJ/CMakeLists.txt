@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(glfw3 REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
+find_package(crocoddyl REQUIRED)
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   if (NOT CMAKE_BUILD_TYPE)
@@ -42,6 +43,7 @@ target_link_libraries(UtilsLib
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
+  crocoddyl::crocoddyl
 )
 
 add_executable(main
