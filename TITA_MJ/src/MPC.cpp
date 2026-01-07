@@ -118,7 +118,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
 
   auto t1 = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> ms = t1 - t0;
-  // std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
+  std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
 
 
 
@@ -202,7 +202,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
     // create folder if it does not exist
     std::string folder = "/tmp/mpc_data/" + std::to_string(t_msec);
     std::string command = "mkdir -p " + folder;
-    system(command.c_str());
+    int _ = system(command.c_str());
 
     // print trajectory to file
     std::string path_x = "/tmp/mpc_data/" + std::to_string(t_msec) + "/x.txt";

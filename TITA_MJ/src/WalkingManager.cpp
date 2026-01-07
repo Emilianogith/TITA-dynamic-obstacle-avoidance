@@ -243,9 +243,9 @@ void WalkingManager::update(
     mpc_.t_msec = t_msec_;
 
     // log mpc logs
-    if (static_cast<int>(t_msec_) % 10 == 0){
-        mpc_.record_logs = true;
-    }
+    // if (static_cast<int>(t_msec_) % 10 == 0){
+    //     mpc_.record_logs = true;
+    // }
 
 
     // DFIP (DDP) - based MPC
@@ -273,7 +273,7 @@ void WalkingManager::update(
     mpc_.solve(x_IN);
     auto t2 = std::chrono::system_clock::now();
     auto delta_t = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    // std::cout << "MPC took " << delta_t << " us" << std::endl;
+    std::cout << "MPC took " << delta_t << " us" << std::endl;
 
     SolutionMPC sol = mpc_.get_solution();
     
@@ -312,7 +312,7 @@ void WalkingManager::update(
     //       milliseconds.
     t_msec_ += controller_timestep_msec_;
 
-    std::cout << "t_msec_ " << t_msec_ << std::endl;
+    // std::cout << "t_msec_ " << t_msec_ << std::endl;
 
     // Log:
     state_log_file_

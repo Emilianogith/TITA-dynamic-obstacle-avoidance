@@ -13,14 +13,14 @@ class walkingPlanner {
   private:
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
-    static constexpr int T = 11;              // in sec
+    static constexpr int T = 15;              // in sec
     static constexpr double dt = 0.002;
     static constexpr int N_STEP = static_cast<int>(T / dt);     //n. of timesteps
     
     double grav = 9.81;
     double m = 27.68978;
     
-    bool log_plan = true;
+    bool log_plan = false;
     
     // ref trajectory
     Eigen::MatrixXd x_ref;
