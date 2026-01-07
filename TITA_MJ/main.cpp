@@ -104,6 +104,60 @@ void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep
   }
 }
 
+
+labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
+labrob::RobotState robot_state;
+
+robot_state.position = Eigen::Vector3d(
+  d->qpos[0], d->qpos[1], d->qpos[2]
+);
+
+robot_state.orientation = Eigen::Quaterniond(
+    d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
+);
+
+robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+    Eigen::Vector3d(
+        d->qvel[0], d->qvel[1], d->qvel[2]
+    );
+
+robot_state.angular_velocity = Eigen::Vector3d(
+  d->qvel[3], d->qvel[4], d->qvel[5]
+);
+
+for (int i = 1; i < m->njnt; ++i) {
+  const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+  robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
+  robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
+}
+
+static double force[6];
+static double result[3];
+Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+robot_state.contact_points.resize(d->ncon);
+robot_state.contact_forces.resize(d->ncon);
+for (int i = 0; i < d->ncon; ++i) {
+  mj_contactForce(m, d, i, force);
+  //mju_rotVecMatT(result, force, d->contact[i].frame);
+  mju_mulMatVec(result, d->contact[i].frame, force, 3, 3);
+  for (int row = 0; row < 3; ++row) {
+      result[row] = 0;
+      for (int col = 0; col < 3; ++col) {
+          result[row] += d->contact[i].frame[3 * col + row] * force[col];
+      }
+  }
+  sum += Eigen::Vector3d(result);
+  for (int j = 0; j < 3; ++j) {
+    robot_state.contact_points[i](j) = d->contact[i].pos[j];
+    robot_state.contact_forces[i](j) = result[j];
+  }
+}
+
+robot_state.total_force = sum;
+
+return robot_state;
+}
+
 int main() {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
@@ -163,7 +217,7 @@ int main() {
 
 
   // Walking Manager:
-  labrob::RobotState initial_robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   labrob::WalkingManager walking_manager;
   walking_manager.init(initial_robot_state, armatures);
 
@@ -193,7 +247,7 @@ int main() {
   while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
     
     mj_step1(mj_model_ptr, mj_data_ptr);
-    labrob::RobotState robot_state = labrob::robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+    labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
     
     // Walking manager
     labrob::JointCommand joint_command;

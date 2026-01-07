@@ -147,7 +147,7 @@ class walkingPlanner {
       // create folder if it does not exist
       std::string folder = "/tmp/plan/" ;
       std::string command = "mkdir -p " + folder;
-      system(command.c_str());
+      int _ = system(command.c_str());
 
       // print trajectory to file
       std::string path_x = "/tmp/plan/x.txt";

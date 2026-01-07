@@ -4,7 +4,6 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <RobotState.hpp>
-#include <mujoco/mujoco.h>
 
 namespace labrob {
 
@@ -29,7 +28,6 @@ robot_state_to_pinocchio_joint_velocity(
     const labrob::RobotState& robot_state
 );
 
-RobotState robot_state_from_mujoco(mjModel* m, mjData* d);
 
 Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
 Eigen::Matrix3d compute_virtual_frame(const Eigen::MatrixXd& wheel_R);
