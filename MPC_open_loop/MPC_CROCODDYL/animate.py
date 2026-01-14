@@ -17,8 +17,7 @@ ACC_X_COL  = 0
 FLZ_COL    = 5
 FRZ_COL    = 8
 
-# DT_MS = 2.0  # must match your folder-to-folder step
-DT_MS = 10.0
+DT_MS = 2.0  # must match your folder-to-folder step
 
 def parse_timestep(name: str):
     try:
@@ -319,7 +318,7 @@ def update(i):
 
 ani = FuncAnimation(
     fig, update, frames=len(times),
-    init_func=init, interval=1, blit=True, repeat=False
+    init_func=init, interval=1, blit=False, repeat=False
 )
 
 # Spacebar toggles pause/play

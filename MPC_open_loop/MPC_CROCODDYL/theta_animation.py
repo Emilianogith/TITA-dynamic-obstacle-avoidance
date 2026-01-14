@@ -17,8 +17,7 @@ OMEGA_COL = 12
 ALPHA_COL = 2
 
 # Time step between folders / MPC step (must match your logging)
-# DT_STEP = 2.0
-DT_STEP = 10.0
+DT_STEP = 2.0
 
 def parse_timestep(name: str):
     try:
@@ -267,7 +266,7 @@ ani = FuncAnimation(
     frames=len(times),
     init_func=init,
     interval=1,
-    blit=True,
+    blit=False,
     repeat=False,
 )
 

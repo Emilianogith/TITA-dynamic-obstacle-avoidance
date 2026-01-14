@@ -68,6 +68,8 @@ void labrob::MPC::init_solver(Eigen::Vector<double, N_IN> x_IN){
 
   auto x0 = get_DFIP_state(x_IN, true);
 
+  x_current = x0;
+
   // stack running models
   std::vector<std::shared_ptr<ActionModelAbstract>> runningModels;
   runningModels.reserve(NH);
@@ -107,14 +109,17 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   update_actionModel();
 
   // set x0
-  auto x0 = get_DFIP_state(x_IN);
+  // auto x0 = get_DFIP_state(x_IN);
+  // std::cout << "x0 " << x0 << std::endl;
+  auto x0 = x_current;
   problemPtr_->set_x0(x0);
 
   auto t0 = std::chrono::high_resolution_clock::now();
 
+
   // solve the problem
   xs[0] = x0;   // to improve feasibility
-  solver->solve(xs, us, SOLVER_MAX_ITER);
+  solver->solve(xs, us);
 
   auto t1 = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> ms = t1 - t0;
@@ -135,6 +140,8 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   for (unsigned int i = 0; i < NH - 1; ++i)
       us[i] = u_traj[i + 1];
   us[NH - 1] = u_traj[NH- 1]; 
+
+  x_current = x_traj[1];
 
 
 
@@ -194,9 +201,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   alpha_   = alpha;
   omega_   = w_curr + dt_ * alpha_;
   theta_   = theta_curr +  dt_ * w_curr;
-
-
-
+ 
 
 
   if(record_logs){

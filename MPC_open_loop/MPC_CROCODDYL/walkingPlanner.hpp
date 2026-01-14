@@ -13,7 +13,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
-    static constexpr int T = 11;              // in sec
+    static constexpr int T = 5;              // in sec
     static constexpr double dt = 0.002;
     static constexpr int N_STEP = static_cast<int>(T / dt);     //n. of timesteps
     
@@ -45,8 +45,8 @@ class walkingPlanner {
     // constant velocity profile
     double vz          = 0.0;
     double v_contact_z = 0.0;
-    double v           = -0.3;
-    double omega       = -0.5;
+    double v           = 0.3;
+    double omega       = 0.5;
     double theta0      = 0.0;
 
     double x0          = 0.0;
@@ -173,11 +173,6 @@ class walkingPlanner {
     double T_jump = 3; // jump time in s
     double T_pre = 2;
     double T_total = T_jump + 2 * T_pre;
-    if(t0 + T_total > T){
-      // TODO stop the robot immediately
-      stop_trajectory(t_msec);
-      return;
-    }
     int N_STEP_JUMP = static_cast<int>(T_total / dt);
 
     double com_z_cur = x_ref.col(current_time_step)(2);
@@ -215,41 +210,6 @@ class walkingPlanner {
         x_ref.col(current_time_step + t_step)(8)  = z_contact;
 
         x_ref.col(current_time_step + t_step)(9)  = v_contact_z;    
-    }
-  }
-
-
-
-  void stop_trajectory(const double& t_msec){
-
-    double t0 = t_msec / 1000;
-    int current_time_step = get_time_step_idx(t_msec);
-
-    int N_CURR = static_cast<int>(t0 / dt);
-
-    double com_x_cur = x_ref.col(current_time_step)(0);
-    double com_y_cur = x_ref.col(current_time_step)(1);
-    double com_z_cur = x_ref.col(current_time_step)(2);
-    double theta_cur = x_ref.col(current_time_step)(10);
-    for (int t_step = N_CURR; t_step < N_STEP; ++t_step){
-        double t = t0 + t_step * dt;
-
-        x_ref.col(t_step)(0)  = com_x_cur;
-        x_ref.col(t_step)(1)  = com_y_cur;
-        x_ref.col(t_step)(2)  = com_z_cur;
-
-        x_ref.col(t_step)(3)  = 0.0;
-        x_ref.col(t_step)(4)  = 0.0;
-        x_ref.col(t_step)(5)  = 0.0;
-
-        x_ref.col(t_step)(6)  = com_x_cur;
-        x_ref.col(t_step)(7)  = com_y_cur;
-        x_ref.col(t_step)(8)  = 0.0;
-
-        x_ref.col(t_step)(9)  = 0.0;
-        x_ref.col(t_step)(10) = theta_cur;
-        x_ref.col(t_step)(11) = 0.0;
-        x_ref.col(t_step)(12) = 0.0;  
     }
   }
 

@@ -42,6 +42,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     controller_timestep_msec_ = 1000 / controller_frequency_;
     
 
+    wheel_radius_ = 0.0925;
     // Desired configuration:
     des_configuration_.qjnt = Eigen::VectorXd::Zero(njnt);
     des_configuration_.qjnt << 
@@ -58,11 +59,11 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     des_configuration_.com.pos = Eigen::Vector3d(0.0, 0.0, 0.4);  
     des_configuration_.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
     des_configuration_.com.acc = Eigen::Vector3d::Zero();
-    des_configuration_.lwheel.pos.p = Eigen::Vector3d(0.0, 0.2835, 0.0925);
+    des_configuration_.lwheel.pos.p = Eigen::Vector3d(0.0, 0.2835, wheel_radius_);
     // des_configuration_.lwheel.pos.R = Eigen::Matrix3d::Identity();     
     des_configuration_.lwheel.vel = Eigen::Vector<double, 6>::Zero();
     des_configuration_.lwheel.acc = Eigen::Vector<double, 6>::Zero();
-    des_configuration_.rwheel.pos.p = Eigen::Vector3d(0.0, -0.2835, 0.0925);
+    des_configuration_.rwheel.pos.p = Eigen::Vector3d(0.0, -0.2835, wheel_radius_);
     // des_configuration_.rwheel.pos.R = Eigen::Matrix3d::Identity();
     des_configuration_.rwheel.vel = Eigen::Vector<double, 6>::Zero();
     des_configuration_.rwheel.acc = Eigen::Vector<double, 6>::Zero();
@@ -243,9 +244,9 @@ void WalkingManager::update(
     mpc_.t_msec = t_msec_;
 
     // log mpc logs
-    // if (static_cast<int>(t_msec_) % 10 == 0){
-    //     mpc_.record_logs = true;
-    // }
+    if (static_cast<int>(t_msec_) % 1 == 0){
+        mpc_.record_logs = true;
+    }
 
 
     // DFIP (DDP) - based MPC
@@ -282,12 +283,14 @@ void WalkingManager::update(
     des_configuration_.com.acc = sol.com.acc;
 
     des_configuration_.lwheel.pos.p.segment<2>(0) = sol.pl.pos.segment<2>(0);
-    des_configuration_.lwheel.vel.segment<2>(0) = sol.pl.vel.segment<2>(0);
-    des_configuration_.lwheel.acc.segment<2>(0) = sol.pl.acc.segment<2>(0);
+    des_configuration_.lwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact 
+    des_configuration_.lwheel.vel.segment<3>(0) = sol.pl.vel.segment<3>(0);
+    des_configuration_.lwheel.acc.segment<3>(0) = sol.pl.acc.segment<3>(0);
 
     des_configuration_.rwheel.pos.p.segment<2>(0) = sol.pr.pos.segment<2>(0);
-    des_configuration_.rwheel.vel.segment<2>(0) = sol.pr.vel.segment<2>(0);
-    des_configuration_.rwheel.acc.segment<2>(0) = sol.pr.acc.segment<2>(0);
+    des_configuration_.rwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact 
+    des_configuration_.rwheel.vel.segment<3>(0) = sol.pr.vel.segment<3>(0);
+    des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
 
     Eigen::Matrix3d R_theta = Eigen::Matrix3d::Zero();
     R_theta << cos(sol.theta), -sin(sol.theta), 0,
@@ -296,7 +299,7 @@ void WalkingManager::update(
     des_configuration_.base_link.pos = R_theta;
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
-    
+
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
 

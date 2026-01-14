@@ -9,17 +9,23 @@ log_data = np.loadtxt("/tmp/state_log_file.txt", delimiter=",", skiprows=1)
 # Extract columns (based on your file)
 t_ms  = log_data[:, 0]     # time in ms
 com_x = log_data[:, 4]     # CoM x des
-zmp_x = log_data[:, 10]     # (left wheel / ZMP x) des
+com_y = log_data[:, 5] 
+left_wheel_x = log_data[:, 10]  
+left_wheel_y = log_data[:, 11]  
+right_wheel_x = log_data[:, 16]
+right_wheel_y = log_data[:, 17]
 
 # Plot
 fig, axs = plt.subplots(2, 2, figsize=(12, 6))
-axs[0,0].plot(t_ms, com_x, label="CoM x des", linewidth=2)
-axs[0,0].plot(t_ms, zmp_x, "--", label="ZMP x des", linewidth=2)
-axs[0,0].set_xlabel("Time [ms]")
-axs[0,0].set_ylabel("Position [m]")
-axs[0,0].set_title("CoM x des vs ZMP x des")
-axs[0,0].legend()
-axs[0,0].grid(True)
+# axs[0,0].plot(com_x, com_y, label="CoM x des", linewidth=2)
+# axs[0,0].plot(left_wheel_x, left_wheel_y, "--", label="left wheel x des", linewidth=2)
+# axs[0,0].plot(right_wheel_x, right_wheel_y,  "--", label="right wheel x des", linewidth=2)
+# axs[0,0].set_xlabel("Time [ms]")
+# axs[0,0].set_ylabel("Position [m]")
+# axs[0,0].set_title("CoM x des vs ZMP x des")
+# axs[0,0].legend()
+# axs[0,0].grid(True)
+fig.delaxes(axs[0,0])  
 
 # PLOT COM error
 com_act = log_data[:, 1:4]

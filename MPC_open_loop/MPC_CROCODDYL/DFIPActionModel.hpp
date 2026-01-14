@@ -202,6 +202,7 @@ public:
     
 
     data->cost = running_cost;
+    data->cost *= 0.0;
   }
 
   // override Running model
@@ -414,6 +415,9 @@ public:
 
       data->Lx += w_eq_k_ * Jx_stability.transpose() * h_stability;
       data->Lxx += w_eq_k_ * Jx_stability.transpose() * Jx_stability;
+
+      data->Lx *= 0.0;
+      data->Lxx *= 0.0;
   }
 
 

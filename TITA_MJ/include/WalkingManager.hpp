@@ -29,6 +29,8 @@ class WalkingManager {
   pinocchio::FrameIndex right_leg4_idx_;
   pinocchio::FrameIndex left_leg4_idx_;
 
+  double wheel_radius_;
+
   double controller_timestep_msec_;
 
   std::shared_ptr<labrob::WholeBodyController> whole_body_controller_ptr_;

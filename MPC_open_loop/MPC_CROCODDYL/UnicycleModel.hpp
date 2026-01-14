@@ -17,13 +17,13 @@ using pinocchio::skew;
 using namespace crocoddyl;
 
 
-class DFIPActionModel : public ActionModelAbstractTpl<double> {
+class UnicycleModel : public ActionModelAbstractTpl<double> {
 public:
   typedef ActionModelAbstractTpl<double> Base;
   typedef ActionDataAbstractTpl<double>  Data;
   typedef StateVectorTpl<double>         StateVector;
 
-  explicit DFIPActionModel(int NX, int NU, double dt, double d_off, double m)
+  explicit UnicycleModel(int NX, int NU, double dt, double d_off, double m)
   : Base(std::make_shared<StateVector>(NX),  // nx, ndx (StateVector uses nx==ndx)
         NU),                                 // nu,     nr=0 for default
         NX_(NX),
@@ -33,24 +33,24 @@ public:
         m_(m)
   {
     // default weights
-    w_pcomxy_k_ = 10.0;           // 10.0;
-    w_pcomz_k_  = 100000.0;           // 10.0;
-    w_vcomxy_k_ = 10.0;           // 0.1;
-    w_vcomz_k_  = 1.0;           // 0.1;
-    w_c_k_      = 0.0;           // 0.01;
+    w_pcomxy_k_ = 0.0;           // 10.0;
+    w_pcomz_k_  = 0.0;           // 10.0;
+    w_vcomxy_k_ = 0.0;           // 0.1;
+    w_vcomz_k_  = 0.0;           // 0.1;
+    w_c_k_      = 1.0;           // 0.01;
     w_v_k_      = 0.0;         // 0.001;
 
-    w_theta_k_  = 0.0;           // 0.1;
-    w_w_k_      = 5.0;        // 0.0001;
+    w_theta_k_  = 1.0;           // 0.1;
+    w_w_k_      = 0.0;        // 0.0001;
 
-    w_a_k_      = 0.1;        // 0.0001;
+    w_a_k_      = 1e-6;        // 0.0001;
     
-    w_alpha_k_  = 0.001;        // 0.0001;
+    w_alpha_k_  = 1e-6;        // 0.0001;
 
-    w_fcxy_k_   = 0.0000001;     // 0.0000001;
-    w_fcz_k_    = 0.0001;     // 0.0000001;
+    w_fcxy_k_   = 0.0;     // 0.0000001;
+    w_fcz_k_    = 0.0;     // 0.0000001;
 
-    w_eq_k_     = 100000000.0;     // 100000000;
+    w_eq_k_     = 0.0;     // 100000000;
 
     x_ref_k_.setZero(NX_);
     u_ref_k_.setZero(NU_);
@@ -61,17 +61,17 @@ public:
 
   // ---- required by CROCODDYL_BASE_CAST on ActionModelBase ----
   std::shared_ptr<ActionModelBase> cloneAsDouble() const override {
-    return std::allocate_shared<DFIPActionModel>(
-        Eigen::aligned_allocator<DFIPActionModel>(), *this);
+    return std::allocate_shared<UnicycleModel>(
+        Eigen::aligned_allocator<UnicycleModel>(), *this);
   }
   std::shared_ptr<ActionModelBase> cloneAsFloat() const override {
-    return std::allocate_shared<DFIPActionModel>(
-        Eigen::aligned_allocator<DFIPActionModel>(), *this);
+    return std::allocate_shared<UnicycleModel>(
+        Eigen::aligned_allocator<UnicycleModel>(), *this);
   }
 
   // struct ActionDataDI : public ActionDataAbstractTpl<double> {
   //   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  //   explicit ActionDataDI(DFIPActionModel* model)
+  //   explicit ActionDataDI(UnicycleModel* model)
   //     : ActionDataAbstractTpl<double>(model) {}
   // };
 
@@ -121,39 +121,25 @@ public:
 
 
     // dynamics
-    data->xnext.segment<3>(0) = pcom + dt_ * vcom;
-    data->xnext.segment<3>(3) = vcom + dt_ * ((fl + fr) / m_ + grav);
+    data->xnext.segment<3>(0).setZero();
+    data->xnext.segment<3>(3).setZero();
     data->xnext(6)  = c(0) + dt_ * (v * cos(theta));
     data->xnext(7)  = c(1) + dt_ * (v * sin(theta));
-    data->xnext(8)  = c(2) + dt_ * vc_z;
-    data->xnext(9)  = vc_z + dt_ * ac_z;
+    data->xnext(8)  = 0.0;
+    data->xnext(9)  = 0.0;
     data->xnext(10) = theta + dt_ * w;
     data->xnext(11) = v + dt_ * a;
     data->xnext(12) = w + dt_ * alpha;
 
-    // build soft constraint
-    double h_contact = vc_z - 0.0;
-    Eigen::Vector3d h_moment = (pl - pcom).cross(fl) + (pr - pcom).cross(fr); 
+   
     
     double running_cost = 0.0;
-    running_cost = 0.5 * w_pcomxy_k_ * (pcom.segment<2>(0) - x_ref_k_.segment<2>(0)).squaredNorm()
-                    + 0.5 * w_pcomz_k_ * (pcom(2) - x_ref_k_(2)) * (pcom(2) - x_ref_k_(2))
-                    + 0.5 * w_vcomxy_k_ * (vcom.segment<2>(0) - x_ref_k_.segment<2>(3)).squaredNorm()
-                    + 0.5 * w_vcomz_k_ * (vcom(2) - x_ref_k_(5)) * (vcom(2) - x_ref_k_(5)) 
-                    + 0.5 * w_c_k_ *(c - x_ref_k_.segment<3>(6)).squaredNorm()
-                    + 0.5 * w_v_k_ * (vc_z - x_ref_k_(9)) * (vc_z - x_ref_k_(9))
+    running_cost = 0.5 * w_c_k_ *(c - x_ref_k_.segment<3>(6)).squaredNorm()
                     + 0.5 * w_theta_k_ * (theta - x_ref_k_(10)) * (theta - x_ref_k_(10))
                     + 0.5 * w_v_k_ * (v - x_ref_k_(11)) * (v - x_ref_k_(11))
                     + 0.5 * w_w_k_ * (w - x_ref_k_(12)) * (w - x_ref_k_(12))
                     + 0.5 * w_a_k_ * (a - u_ref_k_(0)) * (a - u_ref_k_(0)) 
-                    + 0.5 * w_a_k_ * (ac_z - u_ref_k_(1)) * (ac_z - u_ref_k_(1)) 
-                    + 0.5 * w_alpha_k_ * (alpha - u_ref_k_(2)) * (alpha - u_ref_k_(2)) 
-                    + 0.5 * w_fcxy_k_ * (fl.segment<2>(0) - u_ref_k_.segment<2>(3)).squaredNorm()
-                    + 0.5 * w_fcz_k_ * (fl(2) - u_ref_k_(5)) * (fl(2) - u_ref_k_(5))
-                    + 0.5 * w_fcxy_k_ * (fr.segment<2>(0) - u_ref_k_.segment<2>(6)).squaredNorm()
-                    + 0.5 * w_fcz_k_ * (fr(2) - u_ref_k_(8)) * (fr(2) - u_ref_k_(8))
-                    + 0.5 * w_eq_k_* h_contact * h_contact
-                    + 0.5 * w_eq_k_* h_moment.transpose() * h_moment;
+                    + 0.5 * w_alpha_k_ * (alpha - u_ref_k_(2)) * (alpha - u_ref_k_(2));
     
 
     data->cost = running_cost;
@@ -182,23 +168,12 @@ public:
     Eigen::Vector3d pr = c - R * vector_off;
 
 
-    // build soft constraint
-    double h_contact = vc_z - 0.0;
-    Eigen::Vector2d h_stability = pcom.segment<2>(0) - c.segment<2>(0);
-    
     double running_cost = 0.0;
 
-    running_cost = 0.5 * w_pcomxy_k_ * (pcom.segment<2>(0) - x_ref_k_.segment<2>(0)).squaredNorm()
-                    + 0.5 * w_pcomz_k_ * (pcom(2) - x_ref_k_(2)) * (pcom(2) - x_ref_k_(2))
-                    + 0.5 * w_vcomxy_k_ * (vcom.segment<2>(0) - x_ref_k_.segment<2>(3)).squaredNorm()
-                    + 0.5 * w_vcomz_k_ * (vcom(2) - x_ref_k_(5)) * (vcom(2) - x_ref_k_(5)) 
-                    + 0.5 * w_c_k_ *(c - x_ref_k_.segment<3>(6)).squaredNorm()
-                    + 0.5 * w_v_k_ * (vc_z - x_ref_k_(9)) * (vc_z - x_ref_k_(9))
+    running_cost = 0.5 * w_c_k_ *(c - x_ref_k_.segment<3>(6)).squaredNorm()
                     + 0.5 * w_theta_k_ * (theta - x_ref_k_(10)) * (theta - x_ref_k_(10))
                     + 0.5 * w_v_k_ * (v - x_ref_k_(11)) * (v - x_ref_k_(11))
-                    + 0.5 * w_w_k_ * (w - x_ref_k_(12)) * (w - x_ref_k_(12))
-                    + 0.5 * w_eq_k_* h_contact * h_contact
-                    + 0.5 * w_eq_k_ * h_stability.transpose() * h_stability;
+                    + 0.5 * w_w_k_ * (w - x_ref_k_(12)) * (w - x_ref_k_(12));
     
 
     data->cost = running_cost;
@@ -239,95 +214,42 @@ public:
     Eigen::MatrixXd I3 = Eigen::MatrixXd::Identity(3, 3);
     Eigen::MatrixXd I2 = Eigen::MatrixXd::Identity(2, 2);
 
-
-    // z-zmp constraint
-    double h_contact = vc_z - 0.0;
-    Eigen::MatrixXd Jx_contact = Eigen::MatrixXd::Zero(1, NX_);
-    Jx_contact(0,9) = 1.0;
-    Eigen::MatrixXd Ju_contact = Eigen::MatrixXd::Zero(1, NU_);
-
-    // moment constraint
-    Eigen::Vector3d h_moment = (pl - pcom).cross(fl) + (pr - pcom).cross(fr);
-    Eigen::Matrix3d dh_dcom = skew(fl) + skew(fr);
-    Eigen::Matrix3d dh_dc = -skew(fl) * I3 -skew(fr) * I3;
-    Eigen::Vector3d dh_dtheta = -skew(fl) * dR * vector_off + skew(fr) * dR * vector_off;
-    Eigen::Matrix3d dh_dfl = skew(pl - pcom);
-    Eigen::Matrix3d dh_dfr = skew(pr - pcom);
-    Eigen::MatrixXd Jx_moment = Eigen::MatrixXd::Zero(3, NX_);
-    Eigen::MatrixXd Ju_moment = Eigen::MatrixXd::Zero(3, NU_);
-    Jx_moment.block<3,3>(0, 0) = dh_dcom;
-    Jx_moment.block<3,3>(0, 6) = dh_dc;
-    Jx_moment.block<3,1>(0, 10) = dh_dtheta;
-    Ju_moment.block<3,3>(0, 3) = dh_dfl;
-    Ju_moment.block<3,3>(0, 6) = dh_dfr;
-
                         
 
     // Lx
     data->Lx.setZero();
-    data->Lx.segment<2>(0) = w_pcomxy_k_ * (pcom.segment<2>(0) - x_ref_k_.segment<2>(0));
-    data->Lx(2) = w_pcomz_k_ * (pcom(2) - x_ref_k_(2));
-    data->Lx.segment<2>(3) = w_vcomxy_k_ * (vcom.segment<2>(0) - x_ref_k_.segment<2>(3));
-    data->Lx(5) = w_vcomz_k_ * (vcom(2) - x_ref_k_(5));
     data->Lx.segment<3>(6) = w_c_k_ * (c - x_ref_k_.segment<3>(6));
-    data->Lx(9) = w_v_k_ * (vc_z - x_ref_k_(9));
     data->Lx(10) = w_theta_k_ * (theta - x_ref_k_(10));
     data->Lx(11) = w_v_k_ * (v - x_ref_k_(11));
     data->Lx(12) = w_w_k_ * (w - x_ref_k_(12));
-    data->Lx += w_eq_k_ * Jx_contact.transpose() * h_contact;
 
     // Lxx
     data->Lxx.setZero();
-    data->Lxx.block<2,2>(0,0) = w_pcomxy_k_ * I2;
-    data->Lxx(2,2) = w_pcomz_k_;
-    data->Lxx.block<2,2>(3,3) = w_vcomxy_k_ * I2;
-    data->Lxx(5,5) = w_vcomz_k_;
     data->Lxx.block<3,3>(6,6) = w_c_k_ * I3;
-    data->Lxx(9,9) = w_v_k_;
     data->Lxx(10,10) = w_theta_k_;
     data->Lxx(11,11) = w_v_k_;
     data->Lxx(12,12) = w_w_k_;
-    data->Lxx += w_eq_k_ * Jx_contact.transpose() * Jx_contact;
 
-
-    //moment constraint
-    data->Lx += w_eq_k_ * Jx_moment.transpose() * h_moment;
-    data->Lxx += w_eq_k_ * Jx_moment.transpose() * Jx_moment;
-    
     // Lxu
     data->Lxu.setZero();
-    data->Lxu += w_eq_k_ * Jx_moment.transpose() * Ju_moment;
-    data->Lxu += w_eq_k_ * Jx_contact.transpose() * Ju_contact;
     
     // Lu
     data->Lu.setZero();
     data->Lu(0) = w_a_k_ * (a - u_ref_k_(0));
-    data->Lu(1) = w_a_k_ * (ac_z - u_ref_k_(1));
     data->Lu(2) = w_alpha_k_ * (alpha - u_ref_k_(2));
-    data->Lu.segment<2>(3) = w_fcxy_k_ * (fl.segment<2>(0) - u_ref_k_.segment<2>(3));
-    data->Lu(5) = w_fcz_k_ * (fl(2) - u_ref_k_(5));
-    data->Lu.segment<2>(6) = w_fcxy_k_ * (fr.segment<2>(0) - u_ref_k_.segment<2>(6));
-    data->Lu(8) = w_fcz_k_ * (fr(2) - u_ref_k_(8));
-    data->Lu += w_eq_k_ * Ju_moment.transpose() * h_moment;
-    data->Lu += w_eq_k_ * Ju_contact.transpose() * h_contact;
     
     // Luu
     data->Luu.setZero();
     data->Luu(0,0) = w_a_k_;
-    data->Luu(1,1) = w_a_k_;
     data->Luu(2,2) = w_alpha_k_;
-    data->Luu.block<2,2>(3,3) = w_fcxy_k_ * I2;
-    data->Luu(5,5) = w_fcz_k_;
-    data->Luu.block<2,2>(6,6) = w_fcxy_k_ * I2;
-    data->Luu(8,8) = w_fcz_k_;
-    data->Luu += w_eq_k_ * Ju_moment.transpose() * Ju_moment;
-    data->Luu += w_eq_k_ * Ju_contact.transpose() * Ju_contact;
 
     // dynamics 
     data->Fx.setZero();
-    data->Fx = Eigen::MatrixXd::Identity(NX_, NX_);
-    data->Fx.block<3,3>(0,3) = dt_ * I3;
-    data->Fx(8, 9) = dt_;                         // c_z depends on vc_z
+    data->Fx(6,6) = 1.0;
+    data->Fx(7,7) = 1.0;
+    data->Fx(10,10) = 1.0;
+    data->Fx(11,11) = 1.0;
+    data->Fx(12,12) = 1.0;
     data->Fx(10, 12) = dt_;                       // theta depends on w
     data->Fx(6, 10) = -dt_ * v * sin(theta);
     data->Fx(7, 10) =  dt_ * v * cos(theta);
@@ -335,9 +257,6 @@ public:
     data->Fx(7, 11) =  dt_ * sin(theta);
 
     data->Fu.setZero();
-    data->Fu.block<3,3>(3,3) = dt_ * 1/m_ * I3;
-    data->Fu.block<3,3>(3,6) = dt_ * 1/m_ * I3;
-    data->Fu(9, 1)  = dt_;
     data->Fu(11, 0) = dt_;
     data->Fu(12, 2) = dt_;
 }
@@ -381,39 +300,18 @@ public:
 
       // Lx
       data->Lx.setZero();
-      data->Lx.segment<2>(0) = w_pcomxy_k_ * (pcom.segment<2>(0) - x_ref_k_.segment<2>(0));
-      data->Lx(2) = w_pcomz_k_ * (pcom(2) - x_ref_k_(2));
-      data->Lx.segment<2>(3) = w_vcomxy_k_ * (vcom.segment<2>(0) - x_ref_k_.segment<2>(3));
-      data->Lx(5) = w_vcomz_k_ * (vcom(2) - x_ref_k_(5));
       data->Lx.segment<3>(6) = w_c_k_ * (c - x_ref_k_.segment<3>(6));
-      data->Lx(9) = w_v_k_ * (vc_z - x_ref_k_(9));
       data->Lx(10) = w_theta_k_ * (theta - x_ref_k_(10));
       data->Lx(11) = w_v_k_ * (v - x_ref_k_(11));
       data->Lx(12) = w_w_k_ * (w - x_ref_k_(12));
-      data->Lx += w_eq_k_ * Jx_contact.transpose() * h_contact;
 
       // Lxx
       data->Lxx.setZero();
-      data->Lxx.block<2,2>(0,0) = w_pcomxy_k_ * I2;
-      data->Lxx(2,2) = w_pcomz_k_;
-      data->Lxx.block<2,2>(3,3) = w_vcomxy_k_ * I2;
-      data->Lxx(5,5) = w_vcomz_k_;
       data->Lxx.block<3,3>(6,6) = w_c_k_ * I3;
-      data->Lxx(9,9) = w_v_k_;
       data->Lxx(10,10) = w_theta_k_;
       data->Lxx(11,11) = w_v_k_;
       data->Lxx(12,12) = w_w_k_;
-      data->Lxx += w_eq_k_ * Jx_contact.transpose() * Jx_contact;
 
-      
-      //stability constarint
-      Eigen::Vector2d h_stability = pcom.segment<2>(0) - c.segment<2>(0);
-      Eigen::MatrixXd Jx_stability = Eigen::MatrixXd::Zero(2, NX_);
-      Jx_stability.block<2,2>(0,0) =  I2;
-      Jx_stability.block<2,2>(0,6) = -I2;
-
-      data->Lx += w_eq_k_ * Jx_stability.transpose() * h_stability;
-      data->Lxx += w_eq_k_ * Jx_stability.transpose() * Jx_stability;
   }
 
 
