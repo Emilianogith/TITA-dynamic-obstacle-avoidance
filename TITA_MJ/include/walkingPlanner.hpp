@@ -45,8 +45,8 @@ class walkingPlanner {
     // constant velocity profile
     double vz          = 0.0;
     double v_contact_z = 0.0;
-    double v           = -0.3;
-    double omega       = -0.5;
+    double v           = 0.0;
+    double omega       = 0.0;
     double theta0      = 0.0;
 
     double x0          = 0.0;
@@ -169,18 +169,26 @@ class walkingPlanner {
 
     double t0 = t_msec / 1000;
     int current_time_step = get_time_step_idx(t_msec);
+    double com_z_cur = x_ref.col(current_time_step)(2);
 
-    double T_jump = 3; // jump time in s
-    double T_pre = 2;
-    double T_total = T_jump + 2 * T_pre;
+    double T_down = 0.75;
+    double T_pre = 1;
+    double T_up = 0.75;
+
+    double t_in = t0 + T_down + T_pre;
+    double h_jump = 0.10;
+    double g = 9.81;
+    double v0_jump = std::sqrt(2 * g * h_jump);
+
+    double T_jump = 2 * v0_jump / g;
+    
+    double T_total = T_jump + T_down + 2 * T_pre + T_up;
     if(t0 + T_total > T){
-      // TODO stop the robot immediately
       stop_trajectory(t_msec);
       return;
     }
     int N_STEP_JUMP = static_cast<int>(T_total / dt);
 
-    double com_z_cur = x_ref.col(current_time_step)(2);
 
 
     double vz          = 0.0;
@@ -191,23 +199,46 @@ class walkingPlanner {
     double z_min       = 0.25;
 
     double z = com_z_cur;
+    double z_contact = z0_contact;
 
     for (int t_step = 0; t_step < N_STEP_JUMP; ++t_step){
         double t = t0 + t_step * dt;
          
-        if (t < t0 + T_pre){
+        if (t < t0 + T_down){
           vz = -0.2;
-        } else if (t >= t0 + T_pre  && t < t0 + T_pre + T_jump){  // jump time   TODO: quartic poly
+          v_contact_z = 0.0;
+        } else if (t >= t0 + T_down  && t < t0 + + T_down + T_pre){
           vz = 0.0;
           v_contact_z = 0.0;
-        } else if (t >= t0 + T_pre + T_jump){
+        }else if (t >= t0 + T_down + T_pre  && t < t0 + T_down + T_pre + T_jump + (dt)){  // jump time   dt introduced because the integration is discrete and at time t it could be still in landing 
+
+          vz = v0_jump - g * (t - t_in);
+          v_contact_z = vz;
+        } else if (t >= t0 + T_down + T_pre + T_jump + (dt)  && t < t0 + T_down + T_pre + T_jump + T_pre){
+          vz = 0.0;
+          v_contact_z = 0.0;
+        }else if (t >= t0 + T_down + T_pre + T_jump + T_pre){
           vz = 0.2;
+          v_contact_z = 0.0;
         }
 
+
+
+      
         z += vz * dt;
-        z = std::max(z, z_min);
-        z = (t >= t0 + T_pre + T_jump) ? std::min(z, com_z_cur) : z;
-        double z_contact = z0_contact + v_contact_z * t;
+        // clamp if exceeds limits
+        if (z < z_min ){
+          vz = 0.0;
+          z = z_min;
+        } else if (z + vz * dt > com_z_cur && t >= t0 + T_down + T_pre + T_jump){
+          vz = 0.0;
+          z = com_z_cur;
+        }
+
+
+        // double z_contact = z0_contact + v_contact_z * t;
+        z_contact += v_contact_z * dt;
+        z_contact = std::max(z_contact, 0.0);
 
         x_ref.col(current_time_step + t_step)(2)  = z;
         x_ref.col(current_time_step + t_step)(5)  = vz;
@@ -216,6 +247,19 @@ class walkingPlanner {
 
         x_ref.col(current_time_step + t_step)(9)  = v_contact_z;    
     }
+
+
+    if (log_plan){
+      // print trajectory to file
+      std::string path_jump = "/tmp/plan/jump_traj.txt";
+      std::ofstream file_jump(path_jump);
+      file_jump << t_msec << " index " << current_time_step << std::endl;
+      for (int i = 0; i < N_STEP_JUMP; ++i) {
+        file_jump << x_ref.col(current_time_step + i).transpose() << std::endl;
+      }
+      file_jump.close();
+    }
+
   }
 
 
@@ -255,7 +299,7 @@ class walkingPlanner {
 
 
   int get_time_step_idx(const double& t_msec) const{
-   return static_cast<int>(t_msec / 1000 / dt);
+   return static_cast<int>(std::llround(t_msec / 1000 / dt));         // check the rounding when control timestep is not fixed
   }
 
   Eigen::MatrixXd get_xref_at_time_ms(const double& t_msec) const {

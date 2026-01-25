@@ -60,6 +60,22 @@ target_link_libraries(main
 )
 
 
+# add_executable(main_with_Filter
+#   main_with_Filter.cpp
+# )
+# target_include_directories(main_with_Filter
+#   PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include
+# )
+# target_link_libraries(main_with_Filter
+#   glfw
+#   mujoco::mujoco
+#   UtilsLib
+# )
+# target_compile_options(main_with_Filter PRIVATE
+#   -Wno-deprecated-declarations
+#   -Wno-macro-redefined)
+
 
 
 

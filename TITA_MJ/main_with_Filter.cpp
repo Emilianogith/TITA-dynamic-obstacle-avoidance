@@ -8,6 +8,9 @@
 #include <WalkingManager.hpp>
 #include "MujocoUI.hpp"
 
+#include "StateFilter.hpp"
+#include <random>
+
 #include <cstring>
 
 
@@ -237,6 +240,58 @@ int main() {
   bool first_frame = false;
 
   int timestep_counter = 0;
+  
+
+
+
+
+  // ------------------ Build Pinocchio model ------------------
+  std::string robot_description_filename = "../tita_description/tita.urdf";
+
+  pinocchio::Model full_robot_model;
+  pinocchio::JointModelFreeFlyer root_joint;
+  pinocchio::urdf::buildModel(robot_description_filename, root_joint, full_robot_model);
+  // lock joints if you want (empty now)
+  const std::vector<std::string> joint_to_lock_names{};
+  std::vector<pinocchio::JointIndex> joint_ids_to_lock;
+  for (const auto& joint_name : joint_to_lock_names)
+  {
+    if (full_robot_model.existJointName(joint_name))
+      joint_ids_to_lock.push_back(full_robot_model.getJointId(joint_name));
+  }
+  pinocchio::Model robot_model = pinocchio::buildReducedModel(
+      full_robot_model,
+      joint_ids_to_lock,
+      pinocchio::neutral(full_robot_model));
+
+  // ------------------ Filter init ------------------
+  Eigen::Vector<double, 18> x0;
+  x0.setZero();
+  x0(2) = 0.4;
+  x0(7) = 0.28;
+  x0(10) = -0.28;
+  Eigen::Vector<double, 12> params;
+  params.setZero();
+  params(3) = 1.0; 
+
+  labrob::KF state_filter(x0, robot_model);
+
+  Eigen::Vector<double, 14> u;
+  u.setZero();
+
+  // Logging
+  std::ofstream csv("kf_test.csv");
+  csv << "t,"
+      << "p_true_x,p_true_y,p_true_z,"
+      << "p_est_x,p_est_y,p_est_z,"
+      << "v_true_x,v_true_y,v_true_z,"
+      << "v_est_x,v_est_y,v_est_z,"
+      << "p_cL_est_x,p_cL_est_y,p_cL_est_z,"
+      << "p_cR_est_x,p_cR_est_y,p_cR_est_z\n";
+  static std::mt19937 rng(123);  // fixed seed for repeatability
+
+
+
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
@@ -249,9 +304,74 @@ int main() {
     mj_step1(mj_model_ptr, mj_data_ptr);
     labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
     
+
+    auto q = robot_state_to_pinocchio_joint_configuration(robot_model, robot_state);
+    auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model, robot_state);
+
+    Eigen::Vector3d v_fb = Eigen::Vector3d(mj_data_ptr->qvel[0], mj_data_ptr->qvel[1], mj_data_ptr->qvel[2]);
+
+
+    static std::normal_distribution<double> gauss(0.0, 1.0);
+    static std::uniform_real_distribution<double> unif_angle(-M_PI/180, M_PI/180); // random angle in [-pi, pi]
+
+    auto randn = []() { return gauss(rng); };
+
+    Eigen::Quaterniond q_base;
+    q_base.coeffs() = q.segment<4>(3);   
+    q_base.normalize();
+    std::cout << "Rfb before " << q_base.toRotationMatrix() << std::endl;
+
+    Eigen::Vector3d axis(randn(), randn(), randn());
+    axis.normalize();
+
+    double angle = unif_angle(rng);
+
+    Eigen::Quaterniond q_rand(Eigen::AngleAxisd(angle, axis));
+
+    // Apply rotation:
+    Eigen::Quaterniond q_noisy = q_rand * q_base;
+    q_noisy.normalize();
+
+    // Write back to params (x,y,z,w)
+    std::cout << "Rfb after " << q_noisy.toRotationMatrix() << std::endl;
+    params.segment<4>(0) = q_noisy.coeffs();
+    // params.segment<4>(0) = q_base.coeffs();
+
+    params.segment<8>(4) = q.segment<8>(7);
+
+    u.segment<3>(0) = Eigen::Vector3d(0,0,9.81);
+    u.segment<3>(3) = qdot.segment<3>(3);
+    u.segment<8>(6) = qdot.segment<8>(6);
+
+    // ---- Run filter ----
+    Eigen::Vector<double,18> x_est = state_filter.compute_KF_estimate(u, params);
+    // ---- Log ----
+    csv << mj_data_ptr->time << ","
+        << q(0) << "," << q(1) << "," << q(2) << ","
+        << x_est(0) << "," << x_est(1) << "," << x_est(2) << ","
+        << v_fb(0) << "," << v_fb(1) << "," << v_fb(2) << ","
+        << x_est(3) << "," << x_est(4) << "," << x_est(5) << ","
+        << x_est(6) << "," << x_est(7) << "," << x_est(8) << ","
+        << x_est(9) << "," << x_est(10) << "," << x_est(11) << "\n";
+
+    labrob::RobotState new_robot_state;
+    new_robot_state.position = x_est.segment<3>(0);
+    new_robot_state.orientation = params.segment<4>(0);
+    new_robot_state.linear_velocity = new_robot_state.orientation.toRotationMatrix().transpose() * x_est.segment<3>(3);
+    new_robot_state.angular_velocity = u.segment<3>(3);
+
+    for (int i = 1; i < mj_model_ptr->njnt; ++i) {
+      const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
+      new_robot_state.joint_state[name].pos = params(4 + i - 1);
+      new_robot_state.joint_state[name].vel = u(6 + i - 1);
+    }
+
+
+
+
     // Walking manager
     labrob::JointCommand joint_command;
-    walking_manager.update(robot_state, joint_command);
+    walking_manager.update(new_robot_state, joint_command);
 
     // apply a disturbance
     // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
@@ -277,6 +397,8 @@ int main() {
   
     // print_contacts(mj_model_ptr, mj_data_ptr);
 
+    // std::cout << "timestep_counter " << timestep_counter << std::endl;
+
     // Eigen::Map<const Eigen::VectorXd> qacc(mj_data_ptr->qacc, mj_model_ptr->nv);
     // std::cout << "qacc = " << qacc.transpose() << std::endl;
     
@@ -291,7 +413,7 @@ int main() {
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 
-  // Stampa del tempo di esecuzione
+  // // Stampa del tempo di esecuzione
   // std::cout << "Controller period: " << duration << " us" << std::endl;
   
   

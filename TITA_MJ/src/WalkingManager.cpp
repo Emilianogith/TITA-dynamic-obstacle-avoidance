@@ -60,11 +60,11 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     des_configuration_.com.vel = Eigen::Vector3d(0.0, 0.0, 0.0);
     des_configuration_.com.acc = Eigen::Vector3d::Zero();
     des_configuration_.lwheel.pos.p = Eigen::Vector3d(0.0, 0.2835, wheel_radius_);
-    // des_configuration_.lwheel.pos.R = Eigen::Matrix3d::Identity();     
+    des_configuration_.lwheel.pos.R = Eigen::Matrix3d::Identity();     
     des_configuration_.lwheel.vel = Eigen::Vector<double, 6>::Zero();
     des_configuration_.lwheel.acc = Eigen::Vector<double, 6>::Zero();
     des_configuration_.rwheel.pos.p = Eigen::Vector3d(0.0, -0.2835, wheel_radius_);
-    // des_configuration_.rwheel.pos.R = Eigen::Matrix3d::Identity();
+    des_configuration_.rwheel.pos.R = Eigen::Matrix3d::Identity();
     des_configuration_.rwheel.vel = Eigen::Vector<double, 6>::Zero();
     des_configuration_.rwheel.acc = Eigen::Vector<double, 6>::Zero();
     des_configuration_.base_link.pos =Eigen::Matrix3d::Identity();
@@ -244,7 +244,7 @@ void WalkingManager::update(
     mpc_.t_msec = t_msec_;
 
     // log mpc logs
-    if (static_cast<int>(t_msec_) % 1 == 0){
+    if (static_cast<int>(t_msec_) % 10 == 0){
         mpc_.record_logs = true;
     }
 
@@ -269,12 +269,13 @@ void WalkingManager::update(
     // x_IN.segment<3>(15) = sol.pr.vel;
 
 
+
     
-    auto t1 = std::chrono::system_clock::now();
+    // auto t1 = std::chrono::system_clock::now();
     mpc_.solve(x_IN);
-    auto t2 = std::chrono::system_clock::now();
-    auto delta_t = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    std::cout << "MPC took " << delta_t << " us" << std::endl;
+    // auto t2 = std::chrono::system_clock::now();
+    // auto delta_t = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    // std::cout << "MPC took " << delta_t << " us" << std::endl;
 
     SolutionMPC sol = mpc_.get_solution();
     
@@ -283,7 +284,7 @@ void WalkingManager::update(
     des_configuration_.com.acc = sol.com.acc;
 
     des_configuration_.lwheel.pos.p.segment<2>(0) = sol.pl.pos.segment<2>(0);
-    des_configuration_.lwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact 
+    des_configuration_.lwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact (in the model of MPC which does not provide camber motion)
     des_configuration_.lwheel.vel.segment<3>(0) = sol.pl.vel.segment<3>(0);
     des_configuration_.lwheel.acc.segment<3>(0) = sol.pl.acc.segment<3>(0);
 
@@ -300,9 +301,59 @@ void WalkingManager::update(
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
 
+    des_configuration_.in_contact = 1 - mpc_.get_jumpingState();
+
+    // change WBC params in jump state
+    if (!des_configuration_.in_contact) {
+        auto jump_params = WholeBodyControllerParams::getDefaultParams();
+        jump_params.Kp_motion = 50.0;
+        jump_params.Kd_motion = 30.0;   
+                   
+        jump_params.Kp_wheel = 50.0;       
+        jump_params.Kd_wheel = 30.0;                 
+
+        jump_params.weight_q_ddot = 1e-12;                
+        jump_params.weight_com = 0.0;                     
+        jump_params.weight_lwheel = 2.0;                 
+        jump_params.weight_rwheel = 2.0;                 
+        jump_params.weight_base = 1.0;              
+        jump_params.weight_angular_momentum = 0.00001;   
+        jump_params.weight_regulation = 0.0; 
+
+        jump_params.cmm_selection_matrix_x = 1e-6;       
+        jump_params.cmm_selection_matrix_y = 1e-6;       
+        jump_params.cmm_selection_matrix_z = 1e-4;
+                                            
+        whole_body_controller_ptr_->params_ = jump_params;
+
+        des_configuration_.base_link.vel = Eigen::Vector3d::Zero();
+        des_configuration_.base_link.acc = Eigen::Vector3d::Zero();
+    } else {                                                        // TODO: avoid updating the params every cycle 
+        auto params = WholeBodyControllerParams::getDefaultParams();
+        params.Kp_motion = 50.0;
+        params.Kd_motion = 30.0;            
+
+        params.Kp_wheel = 50.0;       
+        params.Kd_wheel = 30.0;                 
+
+        params.weight_q_ddot = 1e-12;                
+        params.weight_com = 1.0;                     
+        params.weight_lwheel = 1.0;                 
+        params.weight_rwheel = 1.0;                 
+        params.weight_base = 0.01;              
+        params.weight_angular_momentum = 0.0001;   
+        params.weight_regulation = 0.0; 
+
+        params.cmm_selection_matrix_x = 1e-6;       
+        params.cmm_selection_matrix_y = 1e-6;       
+        params.cmm_selection_matrix_z = 1e-4;
+                        
+        params.mu = 0.9;     
+        whole_body_controller_ptr_->params_ = params;     
+    }
+
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
-
 
 
 
@@ -310,12 +361,13 @@ void WalkingManager::update(
     auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     // std::cout << "WalkingManager::update() took " << elapsed_time << " us" << std::endl;
     
+    std::cout << "t_msec_ " << t_msec_ << std::endl;
+
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_
     //       milliseconds.
     t_msec_ += controller_timestep_msec_;
 
-    // std::cout << "t_msec_ " << t_msec_ << std::endl;
 
     // Log:
     state_log_file_

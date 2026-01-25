@@ -64,6 +64,8 @@ class WholeBodyController {
   double wheel_radius_;
   double wheel_width_;
   double wheel_length_;
+
+  WholeBodyControllerParams params_;
   
  private:
   pinocchio::Model robot_model_;
@@ -88,8 +90,6 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
 
   double sample_time_;
-
-  WholeBodyControllerParams params_;
 
   Eigen::VectorXd M_armature_;
 

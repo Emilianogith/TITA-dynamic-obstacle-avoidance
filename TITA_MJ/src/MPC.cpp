@@ -110,15 +110,15 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   auto x0 = get_DFIP_state(x_IN);
   problemPtr_->set_x0(x0);
 
-  auto t0 = std::chrono::high_resolution_clock::now();
+  // auto t0 = std::chrono::high_resolution_clock::now();
 
   // solve the problem
   xs[0] = x0;   // to improve feasibility
   solver->solve(xs, us, SOLVER_MAX_ITER);
 
-  auto t1 = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> ms = t1 - t0;
-  std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
+  // auto t1 = std::chrono::high_resolution_clock::now();
+  // std::chrono::duration<double, std::milli> ms = t1 - t0;
+  // std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
 
 
 
@@ -232,7 +232,6 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
 
 void labrob::MPC::update_actionModel(){
   const double dt_ms = Δ * 1000.0;     // Delta in seconds
-  const double t0_ms = t_msec;         // current time in ms
 
   // running stages
   for (int i = 0; i < NH; ++i) {

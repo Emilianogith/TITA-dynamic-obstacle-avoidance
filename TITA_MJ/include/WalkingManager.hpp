@@ -28,6 +28,7 @@ class WalkingManager {
   pinocchio::Data robot_data_;
   pinocchio::FrameIndex right_leg4_idx_;
   pinocchio::FrameIndex left_leg4_idx_;
+  pinocchio::FrameIndex base_idx_;
 
   double wheel_radius_;
 

@@ -52,12 +52,17 @@ class MPC {
     };
   }
 
+  bool get_jumpingState(){  // call it after solve (wich updates the action models)
+    return di_models_[0]->jump_state;
+  };
+
   void update_actionModel();
 
   void solve(Eigen::Vector<double, N_IN> x0);
 
   bool record_logs = false;
   double t_msec = 0.0;
+  
 
 private:
   const labrob::walkingPlanner* walkingPlanner_ptr_ = nullptr;
@@ -72,6 +77,7 @@ private:
   double m    = 27.68978;
   double d    = 0.1;                    // unicycle offset
 
+  // TODO: handle the state in the manifold
   double theta_prev_ = 0.0;             // needed to unwrap theta \in SO(2) - > R
 
   // initial guess trajectory
