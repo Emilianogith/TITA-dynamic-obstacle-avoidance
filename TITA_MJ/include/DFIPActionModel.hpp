@@ -77,12 +77,12 @@ public:
     if (std::fabs(x_ref(9)) > 1e-3) {
       jump_state = true;  // check if desired contact height is greater than 0.0
 
-      w_pcomxy_k_ = 0.0;
+      w_pcomxy_k_ = 10.0;
       w_pcomz_k_  = 1000.0;
-      w_vcomxy_k_ = 0.0;
-      w_vcomz_k_  = 0.0;
+      w_vcomxy_k_ = 10.0;
+      w_vcomz_k_  = 100.0;
       w_c_k_      = 0.0; 
-      w_v_k_      = 0.0;
+      w_v_k_      = 100.0;
       w_vcz_k_    = 10.0;
               
       w_theta_k_  = 0.0;
@@ -105,7 +105,7 @@ public:
       w_pcomxy_k_ = 10.0;
       w_pcomz_k_  = 1000.0;
       w_vcomxy_k_ = 10.0;
-      w_vcomz_k_  = 50.0;
+      w_vcomz_k_  = 100.0;
       w_c_k_      = 0.0; 
       w_v_k_      = 0.0;
       w_vcz_k_    = 0.0;

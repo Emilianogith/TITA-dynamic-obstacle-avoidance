@@ -38,7 +38,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     int njnt = robot_model_.nv - 6;
 
     // TODO: init using node handle.
-    controller_frequency_ = 500;                        // CONTROLLA!!!!!!
+    controller_frequency_ = 500;                                    // nominal control frequency 
     controller_timestep_msec_ = 1000 / controller_frequency_;
     
 
@@ -75,28 +75,6 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init WBC:
     auto params = WholeBodyControllerParams::getDefaultParams();
-    params.Kp_motion = 50.0;
-    params.Kd_motion = 30.0;   
-    // params.Kp_regulation = 0.0;            
-    // params.Kd_regulation = 1;                 
-
-    params.Kp_wheel = 50.0;       
-    params.Kd_wheel = 30.0;                 
-
-    params.weight_q_ddot = 1e-12;                
-    params.weight_com = 1.0;                     
-    params.weight_lwheel = 1.0;                 
-    params.weight_rwheel = 1.0;                 
-    params.weight_base = 0.01;              
-    params.weight_angular_momentum = 0.0001;   
-    params.weight_regulation = 0.0; 
-
-    params.cmm_selection_matrix_x = 1e-6;       
-    params.cmm_selection_matrix_y = 1e-6;       
-    params.cmm_selection_matrix_z = 1e-4;
-                       
-    params.mu = 0.9;                            
-
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
@@ -134,7 +112,10 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector<double, 6> current_rwheel_vel = J_right_wheel * qdot;
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
+    // plan the offline trajectory
+    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true);
 
+    // initialize the MPC
     Eigen::VectorXd x_IN(18);
     x_IN.segment<3>(0) = p_CoM;
     x_IN.segment<3>(3) = v_CoM;
@@ -306,18 +287,18 @@ void WalkingManager::update(
     // change WBC params in jump state
     if (!des_configuration_.in_contact) {
         auto jump_params = WholeBodyControllerParams::getDefaultParams();
-        jump_params.Kp_motion = 50.0;
-        jump_params.Kd_motion = 30.0;   
+        jump_params.Kp_motion = 65.0;
+        jump_params.Kd_motion = 40.0;   
                    
-        jump_params.Kp_wheel = 50.0;       
-        jump_params.Kd_wheel = 30.0;                 
+        jump_params.Kp_wheel = 65.0;       
+        jump_params.Kd_wheel = 40.0;                 
 
-        jump_params.weight_q_ddot = 1e-12;                
-        jump_params.weight_com = 0.0;                     
-        jump_params.weight_lwheel = 2.0;                 
-        jump_params.weight_rwheel = 2.0;                 
-        jump_params.weight_base = 1.0;              
-        jump_params.weight_angular_momentum = 0.00001;   
+        jump_params.weight_q_ddot = 1e-6;                
+        jump_params.weight_com = 0.05;                     
+        jump_params.weight_lwheel = 0.05;                 
+        jump_params.weight_rwheel = 0.05;                 
+        jump_params.weight_base = 0.01;              
+        jump_params.weight_angular_momentum = 0.0;   
         jump_params.weight_regulation = 0.0; 
 
         jump_params.cmm_selection_matrix_x = 1e-6;       
@@ -325,30 +306,8 @@ void WalkingManager::update(
         jump_params.cmm_selection_matrix_z = 1e-4;
                                             
         whole_body_controller_ptr_->params_ = jump_params;
-
-        des_configuration_.base_link.vel = Eigen::Vector3d::Zero();
-        des_configuration_.base_link.acc = Eigen::Vector3d::Zero();
     } else {                                                        // TODO: avoid updating the params every cycle 
         auto params = WholeBodyControllerParams::getDefaultParams();
-        params.Kp_motion = 50.0;
-        params.Kd_motion = 30.0;            
-
-        params.Kp_wheel = 50.0;       
-        params.Kd_wheel = 30.0;                 
-
-        params.weight_q_ddot = 1e-12;                
-        params.weight_com = 1.0;                     
-        params.weight_lwheel = 1.0;                 
-        params.weight_rwheel = 1.0;                 
-        params.weight_base = 0.01;              
-        params.weight_angular_momentum = 0.0001;   
-        params.weight_regulation = 0.0; 
-
-        params.cmm_selection_matrix_x = 1e-6;       
-        params.cmm_selection_matrix_y = 1e-6;       
-        params.cmm_selection_matrix_z = 1e-4;
-                        
-        params.mu = 0.9;     
         whole_body_controller_ptr_->params_ = params;     
     }
 

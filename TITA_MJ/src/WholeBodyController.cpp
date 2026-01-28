@@ -4,28 +4,27 @@ namespace labrob {
 
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
+  params.Kp_motion = 85.0;                    // 50.0
+  params.Kd_motion = 65.0;                    // 30.0
+  params.Kp_regulation = 0.0;            
+  params.Kd_regulation = 1;      
 
-  params.Kp_motion = 13000;                   //13000.0; 
-  params.Kd_motion = 300;                     //300.0;   
-  params.Kp_regulation = 1000.0;              //1000.0; 
-  params.Kd_regulation = 50;                  //50.0;
+  params.Kp_wheel = 65.0;                     // 50.0  
+  params.Kd_wheel = 45.0;                     // 30.0         
 
-  params.Kp_wheel = 90000.0;                  //60000.0;
-  params.Kd_wheel = 200.0;                    //150.0;
+  params.weight_q_ddot = 1e-6;                // 1e-12     
+  params.weight_com = 0.05;                   // 1.0           
+  params.weight_lwheel = 0.05;                // 1.0                
+  params.weight_rwheel = 0.05;                // 1.0               
+  params.weight_base = 0.01;                  // 0.01          
+  params.weight_angular_momentum = 0.00001;   // 0.00001
+  params.weight_regulation = 0.0; 
 
-  params.weight_q_ddot = 1e-4;                //1e-4;
-  params.weight_com = 1.0;                    //1.0;
-  params.weight_lwheel = 2.0;                 // 2.0;
-  params.weight_rwheel = 2.0;                 // 2.0;
-  params.weight_base = 0.1;                  //0.05; 
-  params.weight_angular_momentum = 0.0001;    //0.0001;
-  params.weight_regulation = 0.0;             // 1e-4  
-
-  params.cmm_selection_matrix_x = 1e-6;       //1e-6;
-  params.cmm_selection_matrix_y = 1e-6;       //1e-6;
-  params.cmm_selection_matrix_z = 1e-4;       //1e-4;
-
-  params.mu = 0.5;                            //0.5;
+  params.cmm_selection_matrix_x = 1e-6;       
+  params.cmm_selection_matrix_y = 1e-6;       
+  params.cmm_selection_matrix_z = 1e-4;
+                  
+  params.mu = 0.9;                            // 0.9
 
   return params;
 }
@@ -63,7 +62,7 @@ WholeBodyController::WholeBodyController(
   n_contacts_ = 1;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 3 + 2 * 3 * n_contacts_;
-  n_wbc_inequalities_ = 2 * 4 * n_contacts_ + 2 * n_joints_;
+  n_wbc_inequalities_ = 2 * 4 * n_contacts_ + 2 * n_joints_ + n_joints_;
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 2;
@@ -318,7 +317,7 @@ WholeBodyController::compute_inverse_dynamics(
 
   
   // QP formulation
-  Eigen::MatrixXd H_force_one = 1e-9 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
+  Eigen::MatrixXd H_force_one = 1e-6 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
   Eigen::VectorXd f_force_one = Eigen::VectorXd::Zero(3 * n_contacts_);
 
   Eigen::VectorXd b_dyn = -cu;
@@ -407,16 +406,25 @@ WholeBodyController::compute_inverse_dynamics(
 
 
   // Build C and d matrices
-  Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows(), n_wbc_variables_);
+  Eigen::MatrixXd C_eff = Eigen::MatrixXd::Zero(n_joints_, 6 + n_joints_ + 2 * 3 * n_contacts_);
+  C_eff << Ma, - Jla.transpose() * T_l, - Jra.transpose() * T_r;
+  Eigen::VectorXd d_min_eff(n_joints_);
+  Eigen::VectorXd d_max_eff(n_joints_);
+  d_min_eff << tau_min - ca;
+  d_max_eff << tau_max - ca;
+
+  Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows() + n_joints_, n_wbc_variables_);
   C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 2 * 3 * n_contacts_),
       Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + n_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * n_contacts_),
-      Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + n_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * n_contacts_), C_force_right;
-  Eigen::VectorXd d_min(d_min_acc.rows() + 2 * d_min_force_one.rows());
-  Eigen::VectorXd d_max(d_max_acc.rows() + 2 * d_max_force_one.rows());
-  d_min << d_min_acc, d_min_force_one, d_min_force_one;
-  d_max << d_max_acc, d_max_force_one, d_max_force_one;
-  
-  
+      Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + n_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * n_contacts_), C_force_right,
+      C_eff;
+  Eigen::VectorXd d_min(d_min_acc.rows() + 2 * d_min_force_one.rows() + d_min_eff.rows());
+  Eigen::VectorXd d_max(d_max_acc.rows() + 2 * d_max_force_one.rows() + d_max_eff.rows());
+  d_min << d_min_acc, d_min_force_one, d_min_force_one, d_min_eff;
+  d_max << d_max_acc, d_max_force_one, d_max_force_one, d_max_eff;
+
+
+
 
   // DEBUG PRINT
   // std::cout << " r_wheel_center" << r_wheel_center << std::endl;

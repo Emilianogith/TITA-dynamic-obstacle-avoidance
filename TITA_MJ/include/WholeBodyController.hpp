@@ -45,6 +45,7 @@ struct WholeBodyControllerParams {
   double mu;
 
   static WholeBodyControllerParams getDefaultParams();
+  static WholeBodyControllerParams getJumpParams();
 };
 
 class WholeBodyController {
@@ -74,10 +75,6 @@ class WholeBodyController {
   pinocchio::FrameIndex right_leg4_idx_;
   pinocchio::FrameIndex left_leg4_idx_;
   pinocchio::FrameIndex base_link_idx_;
-  
-  pinocchio::FrameIndex support_frame_id_;
-
-  pinocchio::SE3 T_rleg4_init_;
 
   Eigen::MatrixXd J_right_wheel_;
   Eigen::MatrixXd J_left_wheel_;
@@ -86,8 +83,6 @@ class WholeBodyController {
   Eigen::MatrixXd J_right_wheel_dot_;
   Eigen::MatrixXd J_left_wheel_dot_;
   Eigen::MatrixXd J_base_link_dot_;
-
-  Eigen::VectorXd q_jnt_reg_;
 
   double sample_time_;
 

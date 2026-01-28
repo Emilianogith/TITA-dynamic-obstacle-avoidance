@@ -14,22 +14,31 @@ class walkingPlanner {
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
     static constexpr int T = 11;              // in sec
-    static constexpr double dt = 0.002;
-    static constexpr int N_STEP = static_cast<int>(T / dt);     //n. of timesteps
+    
+    double dt_;
+    int N_STEP_;     //n. of timesteps
     
     double grav = 9.81;
     double m = 27.68978;
     
-    bool log_plan = true;
-    
     // ref trajectory
     Eigen::MatrixXd x_ref;
     Eigen::MatrixXd u_ref;
+
+    bool log_plan_ = false;
     
   public:  
-  walkingPlanner(){
-    x_ref.setZero(NX, N_STEP);
-    u_ref.setZero(NU, N_STEP-1);
+  walkingPlanner(){};
+
+
+  void offline_plan(const double& dt, bool log_plan){
+
+    dt_ = dt;
+    N_STEP_ = static_cast<int>(T / dt_);     //n. of timesteps
+    log_plan_ = log_plan;
+
+    x_ref.setZero(NX, N_STEP_);
+    u_ref.setZero(NU, N_STEP_-1);
 
     // fast speed trajectory
     // double T1 = 1;
@@ -45,7 +54,7 @@ class walkingPlanner {
     // constant velocity profile
     double vz          = 0.0;
     double v_contact_z = 0.0;
-    double v           = 0.0;
+    double v           = 1.0;
     double omega       = 0.0;
     double theta0      = 0.0;
 
@@ -59,8 +68,8 @@ class walkingPlanner {
     double x = x0;
     double y = y0;
 
-    for (int t_step = 0; t_step < N_STEP; ++t_step){
-        double t = t_step * dt;
+    for (int t_step = 0; t_step < N_STEP_; ++t_step){
+        double t = t_step * dt_;
 
 
         // if (t < T1){
@@ -92,8 +101,8 @@ class walkingPlanner {
             x = x0 + (v / omega) * (sin(theta0 + omega * t) - sin(theta0));
             y = x0 - (v / omega) * (cos(theta0 + omega * t) - cos(theta0));
         } else {                      // assume v piece-wise constant along the trajectory and compute the increment from previous position
-            x  += v * cos(theta0) * dt;
-            y  += v * sin(theta0) * dt;
+            x  += v * cos(theta0) * dt_;
+            y  += v * sin(theta0) * dt_;
         }
 
         double z = std::max(z0 + vz * t, z_min);
@@ -101,7 +110,7 @@ class walkingPlanner {
 
 
         // stop at last state
-        if (t_step == N_STEP - 1){
+        if (t_step == N_STEP_ - 1){
           vx = 0.0; vy = 0.0; vz = 0.0;
           v_contact_z = 0.0; v = 0.0; omega = 0.0;
         }
@@ -126,7 +135,7 @@ class walkingPlanner {
 
    
 
-    for (int t_step = 0; t_step < N_STEP - 1; ++t_step){
+    for (int t_step = 0; t_step < N_STEP_ - 1; ++t_step){
 
         u_ref.col(t_step)(0) = 0.0;     // a
         u_ref.col(t_step)(1) = 0.0;     // ac_z
@@ -143,7 +152,7 @@ class walkingPlanner {
 
 
 
-    if (log_plan){
+    if (log_plan_){
       // create folder if it does not exist
       std::string folder = "/tmp/plan/" ;
       std::string command = "mkdir -p " + folder;
@@ -152,13 +161,13 @@ class walkingPlanner {
       // print trajectory to file
       std::string path_x = "/tmp/plan/x.txt";
       std::ofstream file_x(path_x);
-      for (int i = 0; i < N_STEP; ++i) {
+      for (int i = 0; i < N_STEP_; ++i) {
         file_x << x_ref.col(i).transpose() << std::endl;
       }
       file_x.close();
       std::string path_u = "/tmp/plan/u.txt";
       std::ofstream file_u(path_u);
-      for (int i = 0; i < N_STEP - 1; ++i) {
+      for (int i = 0; i < N_STEP_ - 1; ++i) {
         file_u << u_ref.col(i).transpose() << std::endl;
       }
       file_u.close();
@@ -187,7 +196,7 @@ class walkingPlanner {
       stop_trajectory(t_msec);
       return;
     }
-    int N_STEP_JUMP = static_cast<int>(T_total / dt);
+    int N_STEP_JUMP = static_cast<int>(T_total / dt_);
 
 
 
@@ -196,13 +205,13 @@ class walkingPlanner {
   
     double z0_contact  = 0.0;
 
-    double z_min       = 0.25;
+    double z_min       = 0.3;
 
     double z = com_z_cur;
     double z_contact = z0_contact;
 
     for (int t_step = 0; t_step < N_STEP_JUMP; ++t_step){
-        double t = t0 + t_step * dt;
+        double t = t0 + t_step * dt_;
          
         if (t < t0 + T_down){
           vz = -0.2;
@@ -210,11 +219,11 @@ class walkingPlanner {
         } else if (t >= t0 + T_down  && t < t0 + + T_down + T_pre){
           vz = 0.0;
           v_contact_z = 0.0;
-        }else if (t >= t0 + T_down + T_pre  && t < t0 + T_down + T_pre + T_jump + (dt)){  // jump time   dt introduced because the integration is discrete and at time t it could be still in landing 
+        }else if (t >= t0 + T_down + T_pre  && t < t0 + T_down + T_pre + T_jump + (dt_)){  // jump time   dt_ introduced because the integration is discrete and at time t it could be still in landing 
 
           vz = v0_jump - g * (t - t_in);
           v_contact_z = vz;
-        } else if (t >= t0 + T_down + T_pre + T_jump + (dt)  && t < t0 + T_down + T_pre + T_jump + T_pre){
+        } else if (t >= t0 + T_down + T_pre + T_jump + (dt_)  && t < t0 + T_down + T_pre + T_jump + T_pre){
           vz = 0.0;
           v_contact_z = 0.0;
         }else if (t >= t0 + T_down + T_pre + T_jump + T_pre){
@@ -225,19 +234,19 @@ class walkingPlanner {
 
 
       
-        z += vz * dt;
+        z += vz * dt_;
         // clamp if exceeds limits
         if (z < z_min ){
           vz = 0.0;
           z = z_min;
-        } else if (z + vz * dt > com_z_cur && t >= t0 + T_down + T_pre + T_jump){
+        } else if (z + vz * dt_ > com_z_cur && t >= t0 + T_down + T_pre + T_jump){
           vz = 0.0;
           z = com_z_cur;
         }
 
 
         // double z_contact = z0_contact + v_contact_z * t;
-        z_contact += v_contact_z * dt;
+        z_contact += v_contact_z * dt_;
         z_contact = std::max(z_contact, 0.0);
 
         x_ref.col(current_time_step + t_step)(2)  = z;
@@ -249,7 +258,7 @@ class walkingPlanner {
     }
 
 
-    if (log_plan){
+    if (log_plan_){
       // print trajectory to file
       std::string path_jump = "/tmp/plan/jump_traj.txt";
       std::ofstream file_jump(path_jump);
@@ -269,14 +278,14 @@ class walkingPlanner {
     double t0 = t_msec / 1000;
     int current_time_step = get_time_step_idx(t_msec);
 
-    int N_CURR = static_cast<int>(t0 / dt);
+    int N_CURR = static_cast<int>(t0 / dt_);
 
     double com_x_cur = x_ref.col(current_time_step)(0);
     double com_y_cur = x_ref.col(current_time_step)(1);
     double com_z_cur = x_ref.col(current_time_step)(2);
     double theta_cur = x_ref.col(current_time_step)(10);
-    for (int t_step = N_CURR; t_step < N_STEP; ++t_step){
-        double t = t0 + t_step * dt;
+    for (int t_step = N_CURR; t_step < N_STEP_; ++t_step){
+        double t = t0 + t_step * dt_;
 
         x_ref.col(t_step)(0)  = com_x_cur;
         x_ref.col(t_step)(1)  = com_y_cur;
@@ -299,17 +308,17 @@ class walkingPlanner {
 
 
   int get_time_step_idx(const double& t_msec) const{
-   return static_cast<int>(std::llround(t_msec / 1000 / dt));         // check the rounding when control timestep is not fixed
+   return static_cast<int>(std::llround(t_msec / 1000 / dt_));         // check the rounding when control timestep is not fixed
   }
 
   Eigen::MatrixXd get_xref_at_time_ms(const double& t_msec) const {
     int time_step = get_time_step_idx(t_msec);
-    time_step = std::clamp(time_step, 0, N_STEP - 1);
+    time_step = std::clamp(time_step, 0, N_STEP_ - 1);
     return x_ref.col(time_step);
   }
   Eigen::MatrixXd get_uref_at_time_ms(const double& t_msec) const {
     int time_step = get_time_step_idx(t_msec);
-    time_step = std::clamp(time_step, 0, N_STEP - 2);
+    time_step = std::clamp(time_step, 0, N_STEP_ - 2);
     return u_ref.col(time_step);
   }
 
