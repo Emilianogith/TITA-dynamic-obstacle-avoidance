@@ -13,7 +13,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
-    static constexpr int T = 11;              // in sec
+    static constexpr int T = 6;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -64,9 +64,11 @@ class walkingPlanner {
     double z0_contact  = 0.0;
 
     double z_min       = 0.25;
+    double z_max       = 0.42;
  
     double x = x0;
     double y = y0;
+    double z = z0;
 
     for (int t_step = 0; t_step < N_STEP_; ++t_step){
         double t = t_step * dt_;
@@ -105,8 +107,12 @@ class walkingPlanner {
             y  += v * sin(theta0) * dt_;
         }
 
-        double z = std::max(z0 + vz * t, z_min);
+        z = std::clamp(z + vz * dt_, z_min, z_max);
         double z_contact = z0_contact + v_contact_z * t;
+
+        if (z <= z_min || z >= z_max){
+          vz = 0.0;
+        }
 
 
         // stop at last state

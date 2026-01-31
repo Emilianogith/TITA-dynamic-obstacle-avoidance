@@ -162,9 +162,16 @@ class MujocoUI {
     opt_.flags[mjVIS_CONTACTFORCE] = true;
     opt_.flags[mjVIS_TRANSPARENT] = false;
 
-    cam_.distance = 10.0;
-    cam_.azimuth = -25.0;
+    // cam_.distance = 10.0;
+    // cam_.azimuth = -25.0;
+    // cam_.elevation = -20.0;
+    
+    cam_.distance = 6.0;
+    cam_.azimuth = -90.0;
     cam_.elevation = -20.0;
+    cam_.lookat[0] = 3.0;
+    cam_.lookat[1] = 0.0;
+    cam_.lookat[2] = 0.4;
 
     // create scene and context
     mjv_makeScene(model_ptr_, &scn_, 1000);

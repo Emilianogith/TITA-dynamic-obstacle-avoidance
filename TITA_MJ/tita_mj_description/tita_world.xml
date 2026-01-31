@@ -48,7 +48,8 @@
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0.9 0.9 0.9"/>
     <rgba haze="0.15 0.25 0.35 1"/>
-    <global azimuth="-140" elevation="-20" fovy="10"/>
+    <global azimuth="-140" elevation="-20"/>
+    <!-- <global azimuth="-140" elevation="-20" fovy="10"/> -->
   </visual>
 
   <asset>
@@ -168,6 +169,14 @@
       <camera name="front_camera" mode="track" fovy="90.0" quat="4.329780281177467e-17 4.329780281177466e-17 0.7071067811865475 0.7071067811865476" pos="0.0 2.0 0.5" />
       <camera name="side_camera" mode="track" fovy="90.0" quat="-0.5 -0.4999999999999999 0.5 0.5000000000000001" pos="-2.0 0.0 0.5" />
     </body>
+
+
+    <!-- spawn set an obstacle -->
+    <body name="box" pos="3.7 0 0">
+      <freejoint name="box_free"/>
+      <geom type="box" size="0.02 0.4 0.02" mass="1" rgba="1 0 0 1"/>
+    </body>
+
   </worldbody>
 
   <actuator>
