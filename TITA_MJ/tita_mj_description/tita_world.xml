@@ -172,10 +172,14 @@
 
 
     <!-- spawn set an obstacle -->
-    <body name="box" pos="3.7 0 0">
+    <body name="box" pos="2.44 0 0">
       <freejoint name="box_free"/>
-      <geom type="box" size="0.02 0.4 0.02" mass="1" rgba="1 0 0 1"/>
+      <geom type="box" size="0.01 0.4 0.08" mass="1" rgba="1 0 0 1"/>
     </body>
+    <!-- <body name="box" pos="3.5 0 0">
+      <freejoint name="box_free"/>
+      <geom type="box" size="1.0 0.4 0.07" mass="1" rgba="1 0 0 1"/>
+    </body> -->
 
   </worldbody>
 

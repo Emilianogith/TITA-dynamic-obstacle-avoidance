@@ -13,7 +13,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
-    static constexpr int T = 6;              // in sec
+    static constexpr int T = 4;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -186,24 +186,22 @@ class walkingPlanner {
     int current_time_step = get_time_step_idx(t_msec);
     double com_z_cur = x_ref.col(current_time_step)(2);
 
-    double T_down = 0.75;
-    double T_pre = 1;
-    double T_up = 0.75;
+    double T_down = 0.5;
+    double T_up = 0.5;
 
-    double t_in = t0 + T_down + T_pre;
-    double h_jump = 0.10;
+    double t_in = t0 + T_down;
+    double h_jump = 0.20;
     double g = 9.81;
     double v0_jump = std::sqrt(2 * g * h_jump);
 
     double T_jump = 2 * v0_jump / g;
     
-    double T_total = T_jump + T_down + 2 * T_pre + T_up;
+    double T_total = T_jump + T_down + T_up;
     if(t0 + T_total > T){
       stop_trajectory(t_msec);
       return;
     }
-    int N_STEP_JUMP = static_cast<int>(T_total / dt_);
-
+    int N_STEP_JUMP = static_cast<int>(T_total / dt_) + 1;
 
 
     double vz          = 0.0;
@@ -211,49 +209,55 @@ class walkingPlanner {
   
     double z0_contact  = 0.0;
 
-    double z_min       = 0.3;
+    // double z_min       = 0.2;
+    double z_start_jump = 0.3;
 
     double z = com_z_cur;
     double z_contact = z0_contact;
+
+    // down cubic poly params
+    double v0_down = vz * T_down;
+    double vf_down = v0_jump * T_down;
+
+    double a_down = 2 * z - 2 * z_start_jump + v0_down + vf_down;
+    double b_down = 3 * z_start_jump - 3 * z - 2 * v0_down - vf_down;
+    double c_down = v0_down;
+    double d_down = z;
+
+    // down cubic poly params
+    double v0_up = (v0_jump - g * T_jump) * T_up;
+    double vf_up = vz * T_up;
+
+    double a_up = 2 * z_start_jump - 2 * z + v0_up + vf_up;
+    double b_up = 3 * z - 3 * z_start_jump - 2 * v0_up - vf_up;
+    double c_up = v0_up;
+    double d_up = z_start_jump;
 
     for (int t_step = 0; t_step < N_STEP_JUMP; ++t_step){
         double t = t0 + t_step * dt_;
          
         if (t < t0 + T_down){
-          vz = -0.2;
+          double tau = (t - t0) / T_down;
+          tau = std::clamp(tau, 0.0, 1.0);
+          z = a_down * tau * tau * tau + b_down * tau * tau + c_down * tau + d_down;
+          vz = (3 * a_down * tau * tau + 2 * b_down * tau + c_down) * 1 / T_down;
+          z_contact = 0.0;
           v_contact_z = 0.0;
-        } else if (t >= t0 + T_down  && t < t0 + + T_down + T_pre){
-          vz = 0.0;
-          v_contact_z = 0.0;
-        }else if (t >= t0 + T_down + T_pre  && t < t0 + T_down + T_pre + T_jump + (dt_)){  // jump time   dt_ introduced because the integration is discrete and at time t it could be still in landing 
-
-          vz = v0_jump - g * (t - t_in);
+        } else if (t >= t0 + T_down  && t < t0 + T_down + T_jump + (dt_)){  // jump time   dt_ introduced because the integration is discrete and at time t it could be still in landing 
+          double tj = t - t_in;
+          z  = z_start_jump + v0_jump * tj - 0.5 * g * tj * tj;
+          vz = v0_jump - g * tj;
+          z_contact = 0.0 + v0_jump * tj - 0.5 * g * tj * tj;
+          z_contact = std::max(z_contact, 0.0);
           v_contact_z = vz;
-        } else if (t >= t0 + T_down + T_pre + T_jump + (dt_)  && t < t0 + T_down + T_pre + T_jump + T_pre){
-          vz = 0.0;
-          v_contact_z = 0.0;
-        }else if (t >= t0 + T_down + T_pre + T_jump + T_pre){
-          vz = 0.2;
+        } else if (t >= t0 + T_down + T_jump + (dt_)){
+          double tau = (t - (t0 + T_down + T_jump)) / T_up;
+          tau = std::clamp(tau, 0.0, 1.0);
+          z = a_up * tau * tau * tau + b_up * tau * tau + c_up * tau + d_up;
+          vz = (3 * a_up * tau * tau + 2 * b_up * tau + c_up) * 1 / T_up;
+          z_contact = 0.0;
           v_contact_z = 0.0;
         }
-
-
-
-      
-        z += vz * dt_;
-        // clamp if exceeds limits
-        if (z < z_min ){
-          vz = 0.0;
-          z = z_min;
-        } else if (z + vz * dt_ > com_z_cur && t >= t0 + T_down + T_pre + T_jump){
-          vz = 0.0;
-          z = com_z_cur;
-        }
-
-
-        // double z_contact = z0_contact + v_contact_z * t;
-        z_contact += v_contact_z * dt_;
-        z_contact = std::max(z_contact, 0.0);
 
         x_ref.col(current_time_step + t_step)(2)  = z;
         x_ref.col(current_time_step + t_step)(5)  = vz;
