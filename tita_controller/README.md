@@ -8,7 +8,7 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 
 2. clone this package inside the src 
-git clone ..TITA_controller
+git clone ..tita_controller
 
 3. compile
 colcon build
@@ -16,4 +16,4 @@ colcon build
 4. source the bash
 source install/setup.bash
 
-5. ros2 run TITA_controller controller_node
+5. ros2 run tita_controller controller_node
