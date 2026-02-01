@@ -1,18 +1,5 @@
 #include <MPC.hpp>
-
-
 #include <chrono>
-
-
-double wrapToPi(double a) {
-  a = std::fmod(a + M_PI, 2.0 * M_PI);
-  if (a < 0) a += 2.0 * M_PI;
-  return a - M_PI;
-}
-
-double unwrapNear(double theta_wrapped, double theta_prev) {
-  return theta_prev + wrapToPi(theta_wrapped - theta_prev);
-}
 
 Eigen::Vector<double, labrob::MPC::NX> labrob::MPC::get_DFIP_state(Eigen::Vector<double, N_IN> x_IN,
                                                                    bool set_d = false){
@@ -203,7 +190,8 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
     // create folder if it does not exist
     std::string folder = "/tmp/mpc_data/" + std::to_string(t_msec);
     std::string command = "mkdir -p " + folder;
-    int _ = system(command.c_str());
+    const int ret = std::system(command.c_str());
+    (void)ret;
 
     // print trajectory to file
     std::string path_x = "/tmp/mpc_data/" + std::to_string(t_msec) + "/x.txt";

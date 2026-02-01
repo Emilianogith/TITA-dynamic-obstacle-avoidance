@@ -370,9 +370,9 @@ int main() {
 
 
     // Walking manager
-    labrob::JointCommand joint_command;
-    walking_manager.update(new_robot_state, joint_command);
-
+    labrob::JointCommand joint_acceleration;
+    walking_manager.update(robot_state, joint_torque, joint_acceleration);
+    
     // apply a disturbance
     // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
     ++timestep_counter;
@@ -386,7 +386,7 @@ int main() {
       int joint_id = mj_model_ptr->actuator_trnid[i * 2];
       std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
       int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
-      mj_data_ptr->ctrl[i] = joint_command[joint_name];
+      mj_data_ptr->ctrl[i] = joint_torque[joint_name];
 
       joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
       joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";

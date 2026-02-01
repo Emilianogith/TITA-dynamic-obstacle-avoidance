@@ -54,7 +54,7 @@ class walkingPlanner {
     // constant velocity profile
     double vz          = 0.0;
     double v_contact_z = 0.0;
-    double v           = 1.0;
+    double v           = 1.2;
     double omega       = 0.0;
     double theta0      = 0.0;
 
@@ -162,7 +162,8 @@ class walkingPlanner {
       // create folder if it does not exist
       std::string folder = "/tmp/plan/" ;
       std::string command = "mkdir -p " + folder;
-      int _ = system(command.c_str());
+      const int ret = std::system(command.c_str());
+      (void)ret;
 
       // print trajectory to file
       std::string path_x = "/tmp/plan/x.txt";
@@ -186,11 +187,11 @@ class walkingPlanner {
     int current_time_step = get_time_step_idx(t_msec);
     double com_z_cur = x_ref.col(current_time_step)(2);
 
-    double T_down = 0.5;
-    double T_up = 0.5;
+    double T_down = 0.3;
+    double T_up = 0.3;
 
     double t_in = t0 + T_down;
-    double h_jump = 0.20;
+    double h_jump = 0.40;
     double g = 9.81;
     double v0_jump = std::sqrt(2 * g * h_jump);
 
@@ -209,7 +210,9 @@ class walkingPlanner {
   
     double z0_contact  = 0.0;
 
+    // TODO: chek if z_jump goes under z_min
     // double z_min       = 0.2;
+
     double z_start_jump = 0.3;
 
     double z = com_z_cur;

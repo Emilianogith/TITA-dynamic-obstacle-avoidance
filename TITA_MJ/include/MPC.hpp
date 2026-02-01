@@ -2,6 +2,7 @@
 
 #include <DFIPActionModel.hpp>
 #include <walkingPlanner.hpp>
+#include <utils.hpp>
 
 #include <iostream>
 #include <fstream>

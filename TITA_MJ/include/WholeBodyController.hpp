@@ -45,21 +45,22 @@ struct WholeBodyControllerParams {
   double mu;
 
   static WholeBodyControllerParams getDefaultParams();
-  static WholeBodyControllerParams getJumpParams();
+  // static WholeBodyControllerParams getJumpParams();
 };
 
 class WholeBodyController {
  public:
   WholeBodyController(const WholeBodyControllerParams& params,
                       const pinocchio::Model& robot_model,
-                      const labrob::RobotState& initial_robot_state,
                       double sample_time,
                       std::map<std::string, double>& armature);
 
-  labrob::JointCommand
+  void
   compute_inverse_dynamics(
       const labrob::RobotState& robot_state,
-      const labrob::DesiredConfiguration& desired
+      const labrob::DesiredConfiguration& desired,
+      labrob::JointCommand& joint_torque, 
+      labrob::JointCommand& joint_acceleration
   );
 
   double wheel_radius_;
@@ -69,7 +70,7 @@ class WholeBodyController {
   WholeBodyControllerParams params_;
   
  private:
-  pinocchio::Model robot_model_;
+  const pinocchio::Model* robot_model_;
   pinocchio::Data robot_data_;
 
   pinocchio::FrameIndex right_leg4_idx_;

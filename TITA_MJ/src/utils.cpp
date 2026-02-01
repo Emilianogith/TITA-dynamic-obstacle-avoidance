@@ -68,6 +68,15 @@ robot_state_to_pinocchio_joint_velocity(
 }
 
 
+double wrapToPi(double a) {
+  a = std::fmod(a + M_PI, 2.0 * M_PI);
+  if (a < 0) a += 2.0 * M_PI;
+  return a - M_PI;
+}
+
+double unwrapNear(double theta_wrapped, double theta_prev) {
+  return theta_prev + wrapToPi(theta_wrapped - theta_prev);
+}
 
 Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
   Eigen::Matrix3d I = Eigen::Matrix3d::Identity();

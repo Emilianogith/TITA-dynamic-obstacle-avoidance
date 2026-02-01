@@ -28,6 +28,8 @@ robot_state_to_pinocchio_joint_velocity(
     const labrob::RobotState& robot_state
 );
 
+double wrapToPi(double a);
+double unwrapNear(double theta_wrapped, double theta_prev);
 
 Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
 Eigen::Matrix3d compute_virtual_frame(const Eigen::MatrixXd& wheel_R);

@@ -32,33 +32,32 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 WholeBodyController::WholeBodyController(
     const WholeBodyControllerParams& params,
     const pinocchio::Model& robot_model,
-    const labrob::RobotState& initial_robot_state,
     double sample_time,
     std::map<std::string, double>& armatures): 
-    robot_model_(robot_model),
+    robot_model_(&robot_model),
     sample_time_(sample_time),
     params_(params)
 {
 
-  robot_data_ = pinocchio::Data(robot_model_);
+  robot_data_ = pinocchio::Data(*robot_model_);
 
-  right_leg4_idx_ = robot_model_.getFrameId("right_leg_4");
-  left_leg4_idx_ = robot_model_.getFrameId("left_leg_4");
-  base_link_idx_ = robot_model_.getFrameId("base_link");
+  right_leg4_idx_ = robot_model_->getFrameId("right_leg_4");
+  left_leg4_idx_ = robot_model_->getFrameId("left_leg_4");
+  base_link_idx_ = robot_model_->getFrameId("base_link");
 
   wheel_radius_ = 0.0925;
   wheel_width_  = 0.017;
   wheel_length_  = 0.005;
 
-  J_right_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  J_left_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  J_base_link_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_right_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
+  J_left_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
+  J_base_link_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
 
-  J_right_wheel_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  J_left_wheel_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  J_base_link_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_right_wheel_dot_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
+  J_left_wheel_dot_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
+  J_base_link_dot_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
 
-  n_joints_ = robot_model_.nv - 6;
+  n_joints_ = robot_model_->nv - 6;
   n_contacts_ = 1;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 3 + 2 * 3 * n_contacts_;
@@ -66,9 +65,9 @@ WholeBodyController::WholeBodyController(
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 2;
-       joint_id < (pinocchio::JointIndex) robot_model_.njoints;
+       joint_id < (pinocchio::JointIndex) robot_model_->njoints;
        ++joint_id) {
-    std::string joint_name = robot_model_.names[joint_id];
+    std::string joint_name = robot_model_->names[joint_id];
     M_armature_(joint_id - 2) = armatures[joint_name];
   }
 
@@ -79,30 +78,32 @@ WholeBodyController::WholeBodyController(
   );
 }
 
-labrob::JointCommand
+void
 WholeBodyController::compute_inverse_dynamics(
     const labrob::RobotState& robot_state,
-    const labrob::DesiredConfiguration& desired
+    const labrob::DesiredConfiguration& desired,
+    labrob::JointCommand& joint_torque, 
+    labrob::JointCommand& joint_acceleration
 ) {
 
   auto start_time = std::chrono::high_resolution_clock::now();
   
-  auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
-  auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
+  auto q = robot_state_to_pinocchio_joint_configuration(*robot_model_, robot_state);
+  auto qdot = robot_state_to_pinocchio_joint_velocity(*robot_model_, robot_state);
   
   // Compute pinocchio terms
-  pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
-  pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
-  pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+  pinocchio::jacobianCenterOfMass(*robot_model_, robot_data_, q);
+  pinocchio::computeJointJacobiansTimeVariation(*robot_model_, robot_data_, q, qdot);
+  pinocchio::framesForwardKinematics(*robot_model_, robot_data_, q);
 
-  pinocchio::getFrameJacobian(robot_model_, robot_data_, base_link_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_base_link_);
-  pinocchio::getFrameJacobian(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_);
-  pinocchio::getFrameJacobian(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_);
+  pinocchio::getFrameJacobian(*robot_model_, robot_data_, base_link_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_base_link_);
+  pinocchio::getFrameJacobian(*robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_);
+  pinocchio::getFrameJacobian(*robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_);
 
-  pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is to compute the drift term
-  pinocchio::getFrameJacobianTimeVariation(robot_model_, robot_data_, base_link_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_base_link_dot_);
-  pinocchio::getFrameJacobianTimeVariation(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_dot_);
-  pinocchio::getFrameJacobianTimeVariation(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_dot_);
+  pinocchio::centerOfMass(*robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is to compute the drift term
+  pinocchio::getFrameJacobianTimeVariation(*robot_model_, robot_data_, base_link_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_base_link_dot_);
+  pinocchio::getFrameJacobianTimeVariation(*robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_dot_);
+  pinocchio::getFrameJacobianTimeVariation(*robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_dot_);
   
 
   // J_contact_wheel construction
@@ -123,7 +124,7 @@ WholeBodyController::compute_inverse_dynamics(
   int select_wheel_pose = (desired.in_contact == true) ? 3 : 6;
 
   const auto& J_com = robot_data_.Jcom;
-  const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model_, robot_data_, q, qdot);
+  const auto& centroidal_momentum_matrix = pinocchio::ccrba(*robot_model_, robot_data_, q, qdot);
   const auto& a_com_drift = robot_data_.acom[0];
   const auto a_lwheel_drift = J_left_wheel_dot_.topRows(select_wheel_pose) * qdot;
   const auto a_rwheel_drift = J_right_wheel_dot_.topRows(select_wheel_pose) * qdot;
@@ -222,13 +223,13 @@ WholeBodyController::compute_inverse_dynamics(
 
 
   // Joint limits constraints
-  auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(n_joints_);
-  auto q_jnt_dot_max = robot_model_.velocityLimit.tail(n_joints_);
-  auto q_jnt_min = robot_model_.lowerPositionLimit.tail(n_joints_);
-  auto q_jnt_max = robot_model_.upperPositionLimit.tail(n_joints_);
+  auto q_jnt_dot_min = -robot_model_->velocityLimit.tail(n_joints_);
+  auto q_jnt_dot_max = robot_model_->velocityLimit.tail(n_joints_);
+  auto q_jnt_min = robot_model_->lowerPositionLimit.tail(n_joints_);
+  auto q_jnt_max = robot_model_->upperPositionLimit.tail(n_joints_);
 
-  auto tau_min = -robot_model_.effortLimit.tail(n_joints_);
-  auto tau_max = robot_model_.effortLimit.tail(n_joints_);
+  auto tau_min = -robot_model_->effortLimit.tail(n_joints_);
+  auto tau_max = robot_model_->effortLimit.tail(n_joints_);
 
   Eigen::MatrixXd C_acc = Eigen::MatrixXd::Zero(2 * n_joints_, 6 + n_joints_);
   Eigen::VectorXd d_min_acc(2 * n_joints_);
@@ -240,13 +241,13 @@ WholeBodyController::compute_inverse_dynamics(
 
 
 
-  Eigen::MatrixXd M = pinocchio::crba(robot_model_, robot_data_, q);
+  Eigen::MatrixXd M = pinocchio::crba(*robot_model_, robot_data_, q);
   // We need to do this since the inertia matrix in Pinocchio is only upper triangular
   M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
   M.diagonal().tail(n_joints_) += M_armature_;
 
   // Computing Coriolis, centrifugal and gravitational effects
-  auto& c = pinocchio::rnea(robot_model_, robot_data_, q, qdot, Eigen::VectorXd::Zero(6 + n_joints_));
+  auto& c = pinocchio::rnea(*robot_model_, robot_data_, q, qdot, Eigen::VectorXd::Zero(6 + n_joints_));
 
   Eigen::MatrixXd Jlu = J_left_wheel_.block(0,0,6,6);                
   Eigen::MatrixXd Jla = J_left_wheel_.block(0,6,6,n_joints_);
@@ -467,13 +468,12 @@ WholeBodyController::compute_inverse_dynamics(
   // std::cout << "Tempo di esecuzione del controllore Whole Body: " << duration << " microsecondi" << std::endl;
 
 
-  JointCommand joint_command;
-  for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_.njoints; ++joint_id) {
-    const auto& joint_name = robot_model_.names[joint_id];
-    joint_command[joint_name] = tau[joint_id - 2];
+  for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_->njoints; ++joint_id) {
+    const auto& joint_name = robot_model_->names[joint_id];
+    joint_torque[joint_name] = tau[joint_id - 2];
+    joint_acceleration[joint_name] = q_ddot[joint_id - 2 + 6];  // +6 skip the floating base
   }
-  
-  return joint_command;
+ 
 }
 
 }

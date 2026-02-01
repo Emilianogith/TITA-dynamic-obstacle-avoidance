@@ -78,7 +78,6 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
-        initial_robot_state,
         0.001 * controller_timestep_msec_,
         armatures
     );
@@ -147,7 +146,8 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 void WalkingManager::update(
     const labrob::RobotState& robot_state,
-    labrob::JointCommand& joint_command) {
+    labrob::JointCommand& joint_torque, 
+    labrob::JointCommand& joint_acceleration) {
 
     auto start_time = std::chrono::system_clock::now();
 
@@ -312,7 +312,7 @@ void WalkingManager::update(
     }
 
 
-    joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_);
+    whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_, joint_torque, joint_acceleration);
 
 
 
@@ -320,7 +320,7 @@ void WalkingManager::update(
     auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     // std::cout << "WalkingManager::update() took " << elapsed_time << " us" << std::endl;
     
-    std::cout << "t_msec_ " << t_msec_ << std::endl;
+    // std::cout << "t_msec_ " << t_msec_ << std::endl;
 
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_

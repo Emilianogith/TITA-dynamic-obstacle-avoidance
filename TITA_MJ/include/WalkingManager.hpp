@@ -3,7 +3,7 @@
 #include <WholeBodyController.hpp>
 #include <DesiredConfiguration.hpp>
 #include <MPC.hpp>
-#include <LQR.hpp>
+// #include <LQR.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -17,7 +17,8 @@ class WalkingManager {
 
   void update(
       const labrob::RobotState& robot_state,
-      labrob::JointCommand& joint_command
+      labrob::JointCommand& joint_torque, 
+      labrob::JointCommand& joint_acceleration
   );
 
   labrob::DesiredConfiguration des_configuration_;

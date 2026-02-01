@@ -49,8 +49,8 @@ public:
     
     w_alpha_k_  = 0.001;
 
-    w_fcxy_k_   = 0.0000001;     // 0.0000001;
-    w_fcz_k_    = 0.0001;     // 0.0000001;
+    w_fcxy_k_   = 0.0000001;       // 0.0000001;
+    w_fcz_k_    = 0.0001;          // 0.0000001;
 
     w_eq_k_     = 100000000.0;     // 100000000;
 
@@ -227,17 +227,6 @@ public:
     double theta = x(10);
     double v     = x(11);
     double w     = x(12);
-
-
-    // force contact point construction
-    Eigen::Vector3d vector_off = Eigen::Vector3d(0.0, d_off_/2, 0.0);
-    Eigen::Matrix3d R = Eigen::Matrix3d::Zero();
-    R << cos(theta), -sin(theta), 0,
-         sin(theta), cos(theta),  0,
-         0, 0, 1;
-    Eigen::Vector3d pl = c + R * vector_off;
-    Eigen::Vector3d pr = c - R * vector_off;
-
 
     
     double running_cost = 0.0;
@@ -446,20 +435,6 @@ public:
       double v     = x(11);
       double w     = x(12);
 
-
-      // force contact point construction
-      Eigen::Vector3d vector_off = Eigen::Vector3d(0.0, d_off_/2, 0.0);
-      Eigen::Matrix3d R = Eigen::Matrix3d::Zero();
-      R << cos(theta), -sin(theta), 0,
-          sin(theta), cos(theta),  0,
-          0, 0, 1;
-      Eigen::Matrix3d dR = Eigen::Matrix3d::Zero();
-      dR << -sin(theta), -cos(theta), 0,
-          cos(theta), -sin(theta),  0,
-          0, 0, 0;
-      Eigen::Vector3d pl = c + R * vector_off;
-      Eigen::Vector3d pr = c - R * vector_off;
-
       
       Eigen::MatrixXd I3 = Eigen::MatrixXd::Identity(3, 3);
       Eigen::MatrixXd I2 = Eigen::MatrixXd::Identity(2, 2);
@@ -520,16 +495,12 @@ public:
   }
 
 
+  Eigen::VectorXd x_ref_k_;
+  Eigen::VectorXd u_ref_k_;
+  bool jump_state = false;
 
-
-
-Eigen::VectorXd x_ref_k_;
-Eigen::VectorXd u_ref_k_;
-bool jump_state = false;
 private:
-double dt_;
-
-// weights
+  // weights
   double w_pcomz_k_;
   double w_pcomxy_k_;
   double w_vcomxy_k_;     
@@ -547,12 +518,12 @@ double dt_;
   double w_fcz_k_;
   double w_fcxy_k_;
   double w_eq_k_;
-  
+
   const int NX_;
   const int NU_;
+  double dt_;
 
-  double m_     = 27;
   double d_off_ = 0.1;
+  double m_     = 27;
   Eigen::Vector3d grav;
 };
-
