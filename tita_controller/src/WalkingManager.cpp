@@ -241,25 +241,25 @@ void WalkingManager::update(
     }
 
     // prova regulation --------------------
-    auto params = WholeBodyControllerParams::getDefaultParams();
-    params.Kp_motion = 0.0;               
-    params.Kd_motion = 0.0;               
-    params.Kp_regulation = 0.8;            
-    params.Kd_regulation = 0.2;      
+    // auto params = WholeBodyControllerParams::getDefaultParams();
+    // params.Kp_motion = 0.0;               
+    // params.Kd_motion = 0.0;               
+    // params.Kp_regulation = 0.8;            
+    // params.Kd_regulation = 0.2;      
 
-    params.Kp_wheel = 0.0;                  
-    params.Kd_wheel = 0.0;                         
+    // params.Kp_wheel = 0.0;                  
+    // params.Kd_wheel = 0.0;                         
 
-    params.weight_q_ddot = 1e-6;                 
-    params.weight_com = 0.0;                        
-    params.weight_lwheel = 0.0;                          
-    params.weight_rwheel = 0.0;                         
-    params.weight_base = 0.0;                       
-    params.weight_angular_momentum = 0.0; 
-    params.weight_regulation = 0.1; 
-    whole_body_controller_ptr_->params_ = params;   
+    // params.weight_q_ddot = 1e-6;                 
+    // params.weight_com = 0.0;                        
+    // params.weight_lwheel = 0.0;                          
+    // params.weight_rwheel = 0.0;                         
+    // params.weight_base = 0.0;                       
+    // params.weight_angular_momentum = 0.0; 
+    // params.weight_regulation = 0.1; 
+    // whole_body_controller_ptr_->params_ = params;   
     
-    des_configuration_.in_contact = false;       // PER PROVA REGULATION
+    // des_configuration_.in_contact = false;       // PER PROVA REGULATION
     // ---------------------------------------------
     
     whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_, joint_torque, joint_acceleration);

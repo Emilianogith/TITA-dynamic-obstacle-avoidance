@@ -35,6 +35,8 @@ find_package(glfw3 REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(crocoddyl REQUIRED)
 
+find_package(mujoco REQUIRED)
+
 
 # Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
 set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
@@ -93,6 +95,7 @@ target_include_directories(controller_node
 
 ament_target_dependencies(controller_node 
 rclcpp 
+std_msgs
 nav_msgs
 sensor_msgs
 tf2
@@ -101,9 +104,89 @@ geometry_msgs
 )
 
 
+
+# simple_PD node
+add_executable(simple_PD 
+  src/simple_PD.cpp
+)
+
+target_link_libraries(simple_PD 
+  glfw
+  UtilsLib
+)
+
+ament_target_dependencies(simple_PD 
+rclcpp 
+std_msgs
+sensor_msgs
+)
+
+
+
+# sim controller node
+add_executable(sim_controller_node 
+  src/controller_node_sim.cpp
+)
+
+target_link_libraries(sim_controller_node 
+  glfw
+  mujoco::mujoco
+  UtilsLib
+)
+
+target_include_directories(sim_controller_node 
+ PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+ament_target_dependencies(sim_controller_node 
+rclcpp 
+std_msgs
+nav_msgs
+sensor_msgs
+tf2
+tf2_ros
+geometry_msgs
+)
+
+
+
+
+
+# sim controller effort node
+add_executable(sim_effort_controller_node 
+  src/controller_sim_effort.cpp
+)
+
+target_link_libraries(sim_effort_controller_node 
+  glfw
+  mujoco::mujoco
+  UtilsLib
+)
+
+target_include_directories(sim_effort_controller_node 
+ PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+ament_target_dependencies(sim_effort_controller_node 
+rclcpp 
+std_msgs
+nav_msgs
+sensor_msgs
+tf2
+tf2_ros
+geometry_msgs
+)
+
+
+
+
 install(TARGETS
   topic_reader
-  controller_node
+  sim_controller_node
+  sim_effort_controller_node
+  simple_PD
   robot_simulator
   DESTINATION lib/${PROJECT_NAME})
 

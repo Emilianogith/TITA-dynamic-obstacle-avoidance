@@ -29,6 +29,14 @@ robot_state_to_pinocchio_joint_velocity(
 );
 
 
+double angleError(double des, double curr);
+
+
+Eigen::VectorXd
+robot_state_to_pinocchio_joint_velocity(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state
+);
 Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius);
 Eigen::Matrix3d compute_virtual_frame(const Eigen::MatrixXd& wheel_R);
 Eigen::Matrix3d compute_contact_frame(const Eigen::MatrixXd& wheel_R);

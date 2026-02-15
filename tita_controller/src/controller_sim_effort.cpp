@@ -19,6 +19,64 @@
 #include <WalkingManager.hpp>
 
 
+#include "MujocoUI.hpp"
+
+
+
+labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
+labrob::RobotState robot_state;
+
+robot_state.position = Eigen::Vector3d(
+  d->qpos[0], d->qpos[1], d->qpos[2]
+);
+
+robot_state.orientation = Eigen::Quaterniond(
+    d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
+);
+
+robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+    Eigen::Vector3d(
+        d->qvel[0], d->qvel[1], d->qvel[2]
+    );
+
+robot_state.angular_velocity = Eigen::Vector3d(
+  d->qvel[3], d->qvel[4], d->qvel[5]
+);
+
+for (int i = 1; i < m->njnt; ++i) {
+  const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+  robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
+  robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
+}
+
+static double force[6];
+static double result[3];
+Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+robot_state.contact_points.resize(d->ncon);
+robot_state.contact_forces.resize(d->ncon);
+for (int i = 0; i < d->ncon; ++i) {
+  mj_contactForce(m, d, i, force);
+  //mju_rotVecMatT(result, force, d->contact[i].frame);
+  mju_mulMatVec(result, d->contact[i].frame, force, 3, 3);
+  for (int row = 0; row < 3; ++row) {
+      result[row] = 0;
+      for (int col = 0; col < 3; ++col) {
+          result[row] += d->contact[i].frame[3 * col + row] * force[col];
+      }
+  }
+  sum += Eigen::Vector3d(result);
+  for (int j = 0; j < 3; ++j) {
+    robot_state.contact_points[i](j) = d->contact[i].pos[j];
+    robot_state.contact_forces[i](j) = result[j];
+  }
+}
+
+robot_state.total_force = sum;
+
+return robot_state;
+} 
+
+
 
 struct RobotSensors{
 
@@ -85,19 +143,11 @@ public:
 
 
         // Publisher for /tita_hw/effort_controller/commands
-        // effort_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/effort_controller/commands", 10);
-        // timer_effort_cmd_ = this->create_wall_timer(
-        //     std::chrono::milliseconds(2),   // controller at 500 Hz
-        //     std::bind(&RobotController::publish_joint_command, this));
-
-        position_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/forward_position/commands", 10);
-        velocity_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/forward_velocity/commands", 10);
-        effort_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/forward_effort/commands", 10);
-        kp_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/forward_kp/commands", 10);
-        kd_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/forward_kd/commands", 10);
+        effort_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/tita_hw/effort_controller/commands", 10);
         timer_effort_cmd_ = this->create_wall_timer(
             std::chrono::milliseconds(2),   // controller at 500 Hz
             std::bind(&RobotController::publish_joint_command, this));
+
 
 
         
@@ -153,7 +203,14 @@ public:
         joint_state_log_.open("joint_state_log.txt");
         // // TODO: log files
         // std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
-        // joint_eff_log_file_.open("/tmp/joint_eff.txt");
+        joint_eff_log_file_.open("/tmp/joint_eff.txt");
+
+        
+    }
+
+     ~RobotController() {
+        if (mj_data_ptr_) mj_deleteData(mj_data_ptr_);
+        if (mj_model_ptr_) mj_deleteModel(mj_model_ptr_);
     }
 
 
@@ -406,40 +463,81 @@ private:
         tf_broadcaster_->sendTransform(p_cR_tf);
     }
 
-    void publishFixedGains()
-    {
-        const size_t na = robot_model_.njoints - 2;
-        std_msgs::msg::Float64MultiArray kp_msg, kd_msg;
-
-        kp_msg.data.resize(na, 0.0);            // 0.5
-        kd_msg.data.resize(na, 0.0);            // 0.2
-
-        // ---------------- only for regulation -------------------------
-        kp_msg.data[3] = kp_msg.data[7] = 0.5;      // control wheel in velocity because they are wrapped around pi
-        kd_msg.data[3] = kd_msg.data[7] = 0.2;
-        // --------------------------------------------------------------
-
-        kp_cmd_pub_->publish(kp_msg);           // publish kp only once for tita_bridge control
-        kd_cmd_pub_->publish(kd_msg);           // publish kd only once for tita_bridge control
-    }
-
     void initWalkingManagerOnce()
     {
-        // TODO: armatures 
+
+
+        const int kErrorLength = 1024;          // load error string length
+        char loadError[kErrorLength] = "";
+        const char* mjcf_filepath = "/home/emiliano/Desktop/WORKING/TITA_MJ/tita_mj_description/tita_world.xml";
+        mj_model_ptr_ = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
+        if (!mj_model_ptr_) {
+            std::cerr << "Error loading model: " << loadError << std::endl;
+            return;
+        }
+        mj_data_ptr_ = mj_makeData(mj_model_ptr_);
+
+        // Init robot posture:
+        mjtNum joint_left_leg_1_init = 0.0;
+        mjtNum joint_left_leg_2_init = 0.5;   // 0.25; (up-position)
+        mjtNum joint_left_leg_3_init = -1.0;  // -0.5; (up-position)
+        mjtNum joint_left_leg_4_init = 0.0;
+        mjtNum joint_right_leg_1_init = 0.0;
+        mjtNum joint_right_leg_2_init = 0.5;
+        mjtNum joint_right_leg_3_init = -1.0;
+        mjtNum joint_right_leg_4_init = 0.0;
+
+        mj_data_ptr_->qpos[0] = 0.0;                                     // x
+        mj_data_ptr_->qpos[1] = 0.0;                                     // y
+        mj_data_ptr_->qpos[2] = 0.399 + 0.05 - 0.005 - 0.001; // +0.02;(up-position) //-0.3;(upside-down-position) // z
+        mj_data_ptr_->qpos[3] = 1.0;                                     // η
+        mj_data_ptr_->qpos[4] = 0.0; //1.0 for upside down               // ε_x
+        mj_data_ptr_->qpos[5] = 0.0;                                     // ε_y
+        mj_data_ptr_->qpos[6] = 0.0;                                     // ε_z
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_left_leg_1")]] = joint_left_leg_1_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_left_leg_2")]] = joint_left_leg_2_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_left_leg_3")]] = joint_left_leg_3_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_left_leg_4")]] = joint_left_leg_4_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_right_leg_1")]] = joint_right_leg_1_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_right_leg_2")]] = joint_right_leg_2_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_right_leg_3")]] = joint_right_leg_3_init;
+        mj_data_ptr_->qpos[mj_model_ptr_->jnt_qposadr[mj_name2id(mj_model_ptr_, mjOBJ_JOINT, "joint_right_leg_4")]] = joint_right_leg_4_init;
+
+        mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * mj_model_ptr_->nq);
+        memcpy(qpos0, mj_data_ptr_->qpos, mj_model_ptr_->nq * sizeof(mjtNum));
+        
+
+        // extracting armatures values from the simulation
         std::map<std::string, double> armatures;
-        armatures.clear();
+        for (int i = 0; i < mj_model_ptr_->nu; ++i) {
+            int joint_id = mj_model_ptr_->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(mj_model_ptr_, mjOBJ_JOINT, joint_id));
+            int dof_id = mj_model_ptr_->jnt_dofadr[joint_id];
+            armatures[joint_name] = mj_model_ptr_->dof_armature[dof_id];
+        }
+
 
         // Walking Manager:
-        walking_manager_.init(robot_state_, armatures, robot_model_);
+        labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr_, mj_data_ptr_);
+        labrob::WalkingManager walking_manager;
+        walking_manager_.init(initial_robot_state, armatures, robot_model_);
+
+        
+        // Mujoco UI
+        // mujoco_ui_ = labrob::MujocoUI::getInstance(mj_model_ptr_, mj_data_ptr_);
+        // static int framerate = 60.0;
+
         initialized_walking_manager_ = true;
     }
 
     bool fillMsgs(
         const labrob::JointCommand& tau,
         const labrob::JointCommand& qdd,
-        std_msgs::msg::Float64MultiArray& position_msg, 
-        std_msgs::msg::Float64MultiArray& velocity_msg, 
-        std_msgs::msg::Float64MultiArray& effort_msg)
+        std::array<double, 8> KP,
+        std::array<double, 8> KD,
+        std_msgs::msg::Float64MultiArray& effort_msg,
+        labrob::RobotState& robot_state,
+        double  t_mpc)
     {
         const size_t na = robot_model_.njoints - 2;
         const auto& q_min = robot_model_.lowerPositionLimit.tail(na);
@@ -456,34 +554,39 @@ private:
                 return false;
             }
 
-            // ---------------- only for regulation -------------------------
-            // if (idx == 3 || idx == 7) {
-            //     effort_msg.data[idx] = u;
+            const auto& js = robot_state.joint_state[name];      
+            double vel_des = js.vel + a * nominal_dt_;
+            double pos_des = js.pos + js.vel * nominal_dt_ + 0.5 * a * nominal_dt_ * nominal_dt_;
 
-            //     const auto& js = robot_state_.joint_state[name];
-            //     velocity_msg.data[idx] = js.vel + a * nominal_dt_;
-            //     position_msg.data[idx] = js.pos + js.vel * nominal_dt_ + 0.5 * a * nominal_dt_ * nominal_dt_;
-            // }
-            // ---------------------------------------------------------------
-
-
-            effort_msg.data[idx] = u;
-            const auto& js = robot_state_.joint_state[name];
-            velocity_msg.data[idx] = js.vel + a * nominal_dt_;
-            position_msg.data[idx] = js.pos + js.vel * nominal_dt_ + 0.5 * a * nominal_dt_ * nominal_dt_;
-
-
-            // ---- Limit checking ----
-            if (position_msg.data[idx] < q_min[idx] ||
-                position_msg.data[idx] > q_max[idx])
+            if (pos_des < q_min[idx] ||
+                pos_des > q_max[idx])
             {
                 RCLCPP_ERROR(
                     get_logger(),
                     "Position command for joint %zu out of limits! [%f, %f], cmd=%f",
-                    idx + 1, q_min[idx], q_max[idx], position_msg.data[idx]
+                    idx + 1, q_min[idx], q_max[idx], pos_des
                 );
                 return false;
             }
+
+            // get current joint state 
+            const auto& js_curr = robot_state_.joint_state[name];      
+            const double vel_curr = js_curr.vel;
+            const double pos_curr = js_curr.pos;
+
+            if(idx == 7){           // wheel rotation
+                vel_des = 0.3;
+                pos_des = -1.15 + vel_des * t_mpc;
+                pos_des = labrob::angleError(pos_des, 0.0);
+            }
+
+            // std::cout << "Joint: " << name << " | pos_des: " << pos_des << " | pos_curr: " << pos_curr << std::endl;
+
+            effort_msg.data[idx] = KP[idx] * labrob::angleError(pos_des, pos_curr) + KD[idx] * (vel_des - vel_curr);
+            
+            // fill the message with FF + PD low-level control law
+            // effort_msg.data[idx] = u + KP[idx] * labrob::angleError(pos_des, js.pos) + KD[idx] * (vel_des - js.vel);
+
         }
         return true;
     }
@@ -492,18 +595,9 @@ private:
     {
         const size_t na = robot_model_.njoints - 2;
         std_msgs::msg::Float64MultiArray position_msg, velocity_msg, effort_msg, kp_msg, kd_msg;
-        // position_msg.data.resize(na, 0.0);
-        velocity_msg.data.resize(na, 0.0);
         effort_msg.data.resize(na, 0.0);
-        kp_msg.data.resize(na, 0.0);
-        kd_msg.data.resize(na, 0.0);
-
-
-        kp_cmd_pub_->publish(kp_msg); 
-        kd_cmd_pub_->publish(kd_msg);
+    
         effort_cmd_pub_->publish(effort_msg);
-        velocity_cmd_pub_->publish(velocity_msg);
-        // position_cmd_pub_->publish(position_msg);
     }
 
     void publish_joint_command()
@@ -517,35 +611,72 @@ private:
 
         if (!initialized_walking_manager_){
             initWalkingManagerOnce();
-            // publishFixedGains();            // non lo attua se lo mandi una volta sola
         }
 
 
         // --------- Walking manager control ------------
+        mj_step1(mj_model_ptr_, mj_data_ptr_);
+        labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr_, mj_data_ptr_);
+        
         auto start = std::chrono::high_resolution_clock::now();
-
+        
+        // Walking manager
         labrob::JointCommand tau;
         labrob::JointCommand qdd;
-        walking_manager_.update(robot_state_, tau, qdd, t_mpc * 1000);
+        t_msec_sim_ += 2;
+        walking_manager_.update(robot_state, tau, qdd, t_msec_sim_);
+
+        joint_eff_log_file_ << t_msec_sim_ << " ";
+
+        for (int i = 0; i < mj_model_ptr_->nu; ++i) {
+            int joint_id = mj_model_ptr_->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(mj_model_ptr_, mjOBJ_JOINT, joint_id));
+            mj_data_ptr_->ctrl[i] = tau[joint_name];
+            joint_eff_log_file_ << mj_data_ptr_->ctrl[i] << " ";
+        }
+
+        joint_eff_log_file_ << std::endl;
+
+        mj_step2(mj_model_ptr_, mj_data_ptr_);
+
+    
+        // mujoco_ui_->render();
+     
 
         auto end_time = std::chrono::high_resolution_clock::now();
         const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start).count();
  
         RCLCPP_INFO_THROTTLE(
         this->get_logger(), *this->get_clock(), 1,  // ms
-        "t_mpc: %.3f s | Controller period: %ld us", t_mpc, duration
+        "t_msec_sim_: %.3f s | Controller period: %ld us", t_msec_sim_ / 1000, duration
         );
 
         // ---------- Messages fill ----------
         const size_t na = robot_model_.njoints - 2;
-        std_msgs::msg::Float64MultiArray position_msg, velocity_msg, effort_msg; // kp_msg, kd_msg;
-        position_msg.data.resize(na, 0.0);
-        velocity_msg.data.resize(na, 0.0);
+        std_msgs::msg::Float64MultiArray effort_msg;
         effort_msg.data.resize(na, 0.0);
-        // kp_msg.data.resize(na, 0.0);
-        // kd_msg.data.resize(na, 0.0);
 
-        if (!fillMsgs(tau, qdd, position_msg, velocity_msg, effort_msg) || security_stop_) {
+        // std::array<double, 8> KP = {
+        //         50.0, 50.0, 50.0,  0.8,
+        //         50.0, 50.0, 50.0,  0.8
+        //     };
+
+        // std::array<double, 8> KD = {
+        //         1.5, 1.5, 1.5,  0.1,
+        //         1.5, 1.5, 1.5,  0.1
+        //     };
+
+        std::array<double, 8> KP = {
+                0.0, 0.0, 0.0,  2.0,
+                0.0, 0.0, 0.0,  2.0
+            };
+
+        std::array<double, 8> KD = {
+                0.0, 0.0, 0.0,  0.1,
+                0.0, 0.0, 0.0,  0.1
+            };
+
+        if (!fillMsgs(tau, qdd, KP, KD, effort_msg, robot_state, t_mpc) || security_stop_) {
             if (security_stop_)
                 RCLCPP_WARN(this->get_logger(), "Security stop activated! Sending zero commands.");
             sendZeroCommand();
@@ -553,10 +684,6 @@ private:
         }
       
         // ---------- Publish ----------
-        publishFixedGains();
-
-        position_cmd_pub_->publish(position_msg);
-        velocity_cmd_pub_->publish(velocity_msg);
         effort_cmd_pub_->publish(effort_msg);
     }
 
@@ -580,11 +707,7 @@ private:
     bool security_stop_ = false;
 
     // initialize publishers
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr position_cmd_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr velocity_cmd_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr effort_cmd_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr kp_cmd_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr kd_cmd_pub_;
     rclcpp::TimerBase::SharedPtr timer_effort_cmd_;
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr filtered_state_pub_;
@@ -611,12 +734,19 @@ private:
     std::shared_ptr<labrob::KF> state_filter_ptr_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+
+    // for mujjoco sim 
+    double t_msec_sim_ = 0;
+    mjModel* mj_model_ptr_;
+    mjData* mj_data_ptr_; 
+    // labrob::MujocoUI* mujoco_ui_;
+
     // log files
     std::ofstream odom_log_;
     std::ofstream imu_log_;
     std::ofstream joint_state_log_;
     std::ofstream csv;
-    // std::ofstream joint_eff_log_file_;
+    std::ofstream joint_eff_log_file_;
 };
 
 

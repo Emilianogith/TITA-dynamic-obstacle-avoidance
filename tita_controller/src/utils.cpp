@@ -68,6 +68,13 @@ robot_state_to_pinocchio_joint_velocity(
 }
 
 
+double angleError(double des, double curr)
+{
+    return std::atan2(
+        std::sin(des-curr),
+        std::cos(des-curr)
+    );
+}
 
 Eigen::Vector3d get_rCP(const Eigen::MatrixXd& wheel_R, const double& wheel_radius){
   Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
