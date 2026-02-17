@@ -4,19 +4,19 @@ namespace labrob {
 
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
-  params.Kp_motion = 85.0;                    // 50.0
-  params.Kd_motion = 65.0;                    // 30.0
+  params.Kp_motion = 250.0;                   // 120.0
+  params.Kd_motion = 95.0;                    // 65.0
   params.Kp_regulation = 0.0;            
   params.Kd_regulation = 1;      
 
-  params.Kp_wheel = 65.0;                     // 50.0  
-  params.Kd_wheel = 45.0;                     // 30.0         
+  params.Kp_wheel = 250.0;                    // 95.0  
+  params.Kd_wheel = 75.0;                     // 75.0         
 
-  params.weight_q_ddot = 1e-6;                // 1e-12     
-  params.weight_com = 0.05;                   // 1.0           
-  params.weight_lwheel = 0.05;                // 1.0                
-  params.weight_rwheel = 0.05;                // 1.0               
-  params.weight_base = 0.01;                  // 0.01          
+  params.weight_q_ddot = 1e-6;                // 1e-6    
+  params.weight_com = 0.05;                   // 0.05           
+  params.weight_lwheel = 0.05;                // 0.05              
+  params.weight_rwheel = 0.05;                // 0.05              
+  params.weight_base = 0.01;                  // 0.05        
   params.weight_angular_momentum = 0.00001;   // 0.00001
   params.weight_regulation = 0.0; 
 
@@ -24,10 +24,39 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;       
   params.cmm_selection_matrix_z = 1e-4;
                   
-  params.mu = 0.9;                            // 0.9
+  params.mu = 0.9;                             // 0.9
 
   return params;
 }
+
+WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
+  auto params = WholeBodyControllerParams::getDefaultParams();
+  params.Kp_motion = 1800.0;                    // 50.0
+  params.Kd_motion = 300.0;                    // 30.0 
+
+  params.Kp_wheel = 500.0;                     // 50.0  
+  params.Kd_wheel = 300.0;                     // 30.0         
+
+  params.weight_com = 1.1;                   // 1.0           
+  params.weight_lwheel = 0.1;                // 1.0                
+  params.weight_rwheel = 0.1;                // 1.0               
+  params.weight_base = 0.1;                  // 0.01          
+  return params;
+}
+
+WholeBodyControllerParams WholeBodyControllerParams::getJumpParams() {
+  auto jump_params = WholeBodyControllerParams::getDefaultParams();
+  jump_params.Kp_motion = 65.0;
+  jump_params.Kd_motion = 40.0;   
+              
+  jump_params.Kp_wheel = 65.0;       
+  jump_params.Kd_wheel = 40.0;                 
+
+  jump_params.weight_angular_momentum = 0.0;   
+  return jump_params;
+}
+
+
 
 WholeBodyController::WholeBodyController(
     const WholeBodyControllerParams& params,
@@ -58,7 +87,7 @@ WholeBodyController::WholeBodyController(
   J_base_link_dot_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
 
   n_joints_ = robot_model_->nv - 6;
-  n_contacts_ = 1;
+  n_contacts_ = 4;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 3 + 2 * 3 * n_contacts_;
   n_wbc_inequalities_ = 2 * 4 * n_contacts_ + 2 * n_joints_ + n_joints_;

@@ -45,7 +45,8 @@ struct WholeBodyControllerParams {
   double mu;
 
   static WholeBodyControllerParams getDefaultParams();
-  // static WholeBodyControllerParams getJumpParams();
+  static WholeBodyControllerParams getRobustParams();
+  static WholeBodyControllerParams getJumpParams();
 };
 
 class WholeBodyController {

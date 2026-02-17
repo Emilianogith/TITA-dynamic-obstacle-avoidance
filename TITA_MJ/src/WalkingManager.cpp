@@ -74,7 +74,8 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 
     // Init WBC:
-    auto params = WholeBodyControllerParams::getDefaultParams();
+    auto params = WholeBodyControllerParams::getRobustParams();
+
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
@@ -218,8 +219,23 @@ void WalkingManager::update(
 
 
     // jump routine
-    if (std::fabs(t_msec_ - 2000.0) < 0.5){
-        walkingPlanner_.jumpRoutine(t_msec_);
+
+    // maximum height obstacle
+    // if (std::fabs(t_msec_ - 2000.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.48);
+    // }
+
+    // 3-obstacle
+    if (std::fabs(t_msec_ - 1500.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.15);
+    }
+
+    if (std::fabs(t_msec_ - 2500.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.25);
+    }
+
+    if (std::fabs(t_msec_ - 3800.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.40);
     }
 
     mpc_.t_msec = t_msec_;
@@ -286,25 +302,7 @@ void WalkingManager::update(
 
     // change WBC params in jump state
     if (!des_configuration_.in_contact) {
-        auto jump_params = WholeBodyControllerParams::getDefaultParams();
-        jump_params.Kp_motion = 65.0;
-        jump_params.Kd_motion = 40.0;   
-                   
-        jump_params.Kp_wheel = 65.0;       
-        jump_params.Kd_wheel = 40.0;                 
-
-        jump_params.weight_q_ddot = 1e-6;                
-        jump_params.weight_com = 0.05;                     
-        jump_params.weight_lwheel = 0.05;                 
-        jump_params.weight_rwheel = 0.05;                 
-        jump_params.weight_base = 0.01;              
-        jump_params.weight_angular_momentum = 0.0;   
-        jump_params.weight_regulation = 0.0; 
-
-        jump_params.cmm_selection_matrix_x = 1e-6;       
-        jump_params.cmm_selection_matrix_y = 1e-6;       
-        jump_params.cmm_selection_matrix_z = 1e-4;
-                                            
+        auto jump_params = WholeBodyControllerParams::getJumpParams();                                       
         whole_body_controller_ptr_->params_ = jump_params;
     } else {                                                        // TODO: avoid updating the params every cycle 
         auto params = WholeBodyControllerParams::getDefaultParams();

@@ -327,7 +327,7 @@ def update(i):
 
 ani = FuncAnimation(
     fig, update, frames=len(times),
-    init_func=init, interval=1, blit=True, repeat=False
+    init_func=init, interval=1, blit=False, repeat=False
 )
 
 # Spacebar toggles pause/play

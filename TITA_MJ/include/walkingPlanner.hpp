@@ -13,7 +13,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 13; 
     static constexpr int NU = 9; 
-    static constexpr int T = 4;              // in sec
+    static constexpr int T = 6;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -181,7 +181,7 @@ class walkingPlanner {
     }
   }
 
-  void jumpRoutine(const double& t_msec){
+  void jumpRoutine(const double& t_msec, const double h_jump){
 
     double t0 = t_msec / 1000;
     int current_time_step = get_time_step_idx(t_msec);
@@ -191,7 +191,6 @@ class walkingPlanner {
     double T_up = 0.3;
 
     double t_in = t0 + T_down;
-    double h_jump = 0.40;
     double g = 9.81;
     double v0_jump = std::sqrt(2 * g * h_jump);
 
