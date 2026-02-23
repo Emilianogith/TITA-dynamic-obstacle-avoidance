@@ -183,19 +183,35 @@
     </body> -->
 
 
-    <body name="box1" pos="2.00 0 0">
+
+    <!-- <body name="box1" pos="2.72 0 0">
+        <freejoint name="box_free1"/>
+        <geom type="box" size="0.01 0.4 0.2" mass="1" rgba="1 0 0 1"/>
+    </body> -->
+
+
+
+    <!-- high speed rect -->
+    <!-- <body name="box1" pos="13.0 0 0">
+        <freejoint name="box_free1"/>
+        <geom type="box" size="0.3 0.4 0.1" mass="1" rgba="1 0 0 1"/>
+    </body> -->
+
+
+    <!-- three obstacles  -->
+    <body name="box1" pos="1.45 0 0">
       <freejoint name="box_free1"/>
-      <geom type="box" size="0.01 0.4 0.05" mass="1" rgba="1 0 0 1"/>
+      <geom type="box" size="0.04 0.4 0.05" mass="1" rgba="1 0 0 1"/>
     </body>
 
-    <body name="box2" pos="3.25 0 0">
+    <body name="box2" pos="3.0 0 0">
       <freejoint name="box_free2"/>
-      <geom type="box" size="0.01 0.4 0.10" mass="1" rgba="1 0 0 1"/>
+      <geom type="box" size="0.04 0.4 0.10" mass="1" rgba="1 0 0 1"/>
     </body>
 
-    <body name="box3" pos="4.75 0 0">
+    <body name="box3" pos="4.85 0 0">
       <freejoint name="box_free3"/>
-      <geom type="box" size="0.01 0.4 0.15" mass="1" rgba="1 0 0 1"/>
+      <geom type="box" size="0.03 0.4 0.15" mass="1" rgba="1 0 0 1"/>
     </body>
 
 

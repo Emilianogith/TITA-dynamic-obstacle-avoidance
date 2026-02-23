@@ -53,10 +53,6 @@ class MPC {
     };
   }
 
-  bool get_jumpingState(){  // call it after solve (wich updates the action models)
-    return di_models_[0]->jump_state;
-  };
-
   void update_actionModel();
 
   void solve(Eigen::Vector<double, N_IN> x0);

@@ -173,6 +173,7 @@ class MujocoUI {
     cam_.lookat[1] = 0.0;
     cam_.lookat[2] = 0.4;
 
+
     // create scene and context
     mjv_makeScene(model_ptr_, &scn_, 1000);
     mjr_makeContext(model_ptr_, &con_, mjFONTSCALE_100);

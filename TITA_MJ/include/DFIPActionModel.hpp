@@ -33,7 +33,7 @@ public:
         m_(m)
   {
     // default weights
-    w_pcomxy_k_ = 10.0;  
+    w_pcomxy_k_ = 1000.0;  
     w_pcomz_k_  = 1000.0;
     w_vcomxy_k_ = 10.0; 
     w_vcomz_k_  = 50.0;
@@ -41,13 +41,13 @@ public:
     w_v_k_      = 0.0;
     w_vcz_k_    = 0.0;
 
-    w_theta_k_  = 0.0;
+    w_theta_k_  = 100.0;
     w_w_k_      = 5.0;
 
     w_a_k_      = 0.1;
     w_acz_k_    = 0.0;
     
-    w_alpha_k_  = 0.001;
+    w_alpha_k_  = 0.1;
 
     w_fcxy_k_   = 0.00001;       // 0.0000001;
     w_fcz_k_    = 0.0001;          // 0.0000001;
@@ -74,8 +74,8 @@ public:
 
 
    void checkJumpState(const Eigen::VectorXd& x_ref) {
-    if (std::fabs(x_ref(9)) > 1e-3) {
-      jump_state = true;  // check if desired contact height is greater than 0.0
+    if (x_ref(13) == 3) {
+      jump_state = true;  // check if planned state is jump_state = 3 :: flight phase
 
       w_pcomxy_k_ = 10.0;
       w_pcomz_k_  = 1000.0;
@@ -102,15 +102,15 @@ public:
       jump_state = false;
 
       // default weights
-      w_pcomxy_k_ = 10.0;
+      w_pcomxy_k_ = 1000.0;
       w_pcomz_k_  = 1000.0;
       w_vcomxy_k_ = 10.0;
-      w_vcomz_k_  = 100.0;
+      w_vcomz_k_  = 50.0;
       w_c_k_      = 0.0; 
       w_v_k_      = 0.0;
       w_vcz_k_    = 0.0;
 
-      w_theta_k_  = 0.0;
+      w_theta_k_  = 100.0;
       w_w_k_      = 5.0;
 
       w_a_k_      = 0.1;
@@ -118,7 +118,7 @@ public:
       
       w_alpha_k_  = 0.001;
 
-      w_fcxy_k_   = 0.0000001;
+      w_fcxy_k_   = 0.00001;
       w_fcz_k_    = 0.0001;
     }
   }

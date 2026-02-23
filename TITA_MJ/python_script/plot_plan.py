@@ -9,7 +9,7 @@ JUMP_PATH = Path("/tmp/plan/jump_traj.txt")
 
 DT_MS = 2
 
-NX = 13
+NX = 14
 PCOM_X_COL, PCOM_Y_COL, PCOM_Z_COL = 0, 1, 2
 C_X_COL,    C_Y_COL, C_Z_COL    = 6, 7, 8
 THETA_COL = 10

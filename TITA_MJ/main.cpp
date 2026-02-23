@@ -222,17 +222,11 @@ int main() {
   labrob::WalkingManager walking_manager;
   walking_manager.init(initial_robot_state, armatures);
 
-
-  // // zero gravity
-  // mj_model_ptr->opt.gravity[0] = 0.0;
-  // mj_model_ptr->opt.gravity[1] = 0.0;
-  // mj_model_ptr->opt.gravity[2] = 0.0;
-
   
   // Mujoco UI
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
-  double dt = mj_model_ptr->opt.timestep;   // simulation timestep
+  double dt = mj_model_ptr->opt.timestep;                       // simulation timestep
 
   static int framerate = 60.0;
   bool first_frame = false;
@@ -245,7 +239,7 @@ int main() {
   auto start_time = std::chrono::high_resolution_clock::now();
 
   mjtNum simstart = mj_data_ptr->time;
-  while( mj_data_ptr->time - simstart < 1.0/framerate ) { // non serve
+  while( mj_data_ptr->time - simstart < 1.0/framerate ) {       // non serve
     
     mj_step1(mj_model_ptr, mj_data_ptr);
     labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);

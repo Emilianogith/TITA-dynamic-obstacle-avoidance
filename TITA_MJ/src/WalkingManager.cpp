@@ -44,6 +44,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     wheel_radius_ = 0.0925;
     // Desired configuration:
+    des_configuration_.tau_prev = Eigen::VectorXd::Zero(njnt);
     des_configuration_.qjnt = Eigen::VectorXd::Zero(njnt);
     des_configuration_.qjnt << 
     0.0,   // joint_left_leg_1
@@ -75,7 +76,6 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init WBC:
     auto params = WholeBodyControllerParams::getRobustParams();
-
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
@@ -113,7 +113,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
     // plan the offline trajectory
-    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true);
+    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true, p_CoM);
 
     // initialize the MPC
     Eigen::VectorXd x_IN(18);
@@ -222,20 +222,28 @@ void WalkingManager::update(
 
     // maximum height obstacle
     // if (std::fabs(t_msec_ - 2000.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.48);
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.36);
     // }
 
+    // high speed obstacle
+    // if (std::fabs(t_msec_ - 4000.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.21);
+    // }
+
+   
+
+
     // 3-obstacle
-    if (std::fabs(t_msec_ - 1500.0) < 0.5){
+    if (std::fabs(t_msec_ - 1200.0) < 0.5){
         walkingPlanner_.jumpRoutine(t_msec_, 0.15);
     }
 
-    if (std::fabs(t_msec_ - 2500.0) < 0.5){
+    if (std::fabs(t_msec_ - 2300.0) < 0.5){
         walkingPlanner_.jumpRoutine(t_msec_, 0.25);
     }
 
     if (std::fabs(t_msec_ - 3800.0) < 0.5){
-        walkingPlanner_.jumpRoutine(t_msec_, 0.40);
+        walkingPlanner_.jumpRoutine(t_msec_, 0.30);
     }
 
     mpc_.t_msec = t_msec_;
@@ -298,21 +306,62 @@ void WalkingManager::update(
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
 
-    des_configuration_.in_contact = 1 - mpc_.get_jumpingState();
+    // get jumping phase from planned trajectory
+        // jump_state = 0 : contact phase
+        // jump_state = 1 : pre-jump phase
+        // jump_state = 2 : ground-detachment phase
+        // jump_state = 3 : flight phase
+        // jump_state = 4 : post-jump phase
+    int jump_state = walkingPlanner_.get_jump_phase_at_time_ms(t_msec_);
+
+    des_configuration_.in_contact = (jump_state == 3) ? false : true;
 
     // change WBC params in jump state
-    if (!des_configuration_.in_contact) {
-        auto jump_params = WholeBodyControllerParams::getJumpParams();                                       
-        whole_body_controller_ptr_->params_ = jump_params;
-    } else {                                                        // TODO: avoid updating the params every cycle 
-        auto params = WholeBodyControllerParams::getDefaultParams();
-        whole_body_controller_ptr_->params_ = params;     
+    switch (jump_state) {
+
+        case 3: {               // flight phase
+            auto jump_params = WholeBodyControllerParams::getJumpParams();   
+            whole_body_controller_ptr_->params_ = jump_params;
+            break;
+        }
+        
+        case 1: {               // pre-jump phase                                        
+            auto params = WholeBodyControllerParams::getDefaultParams();        
+            whole_body_controller_ptr_->params_ = params;       
+            break;
+        }  
+
+        case 2: {               // ground-detachment phase
+            auto params = WholeBodyControllerParams::getDefaultParams(); 
+
+            // penalize angular momenutum 
+            params.weight_angular_momentum = 9.0;
+            params.cmm_selection_matrix_x = 1000;       
+            params.cmm_selection_matrix_y = 1000;       
+            params.cmm_selection_matrix_z = 1e-4;
+            whole_body_controller_ptr_->params_ = params;  
+            break; 
+        }  
+
+        case 4: {               // post-jump phase
+            auto params = WholeBodyControllerParams::getRobustParams();   
+            whole_body_controller_ptr_->params_ = params;
+            break;
+        }
+
     }
 
 
     whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_, joint_torque, joint_acceleration);
 
-
+    // for reducing chattering
+    int idx = 0;
+    for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_.njoints; ++joint_id, ++idx) {
+        const auto& joint_name = robot_model_.names[joint_id];
+        des_configuration_.tau_prev(idx) = joint_torque[joint_name];
+    }
+    
+    
 
     auto end_time = std::chrono::system_clock::now();
     auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
