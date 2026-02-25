@@ -21,7 +21,7 @@ namespace labrob {
 
     class KF{
         
-        static constexpr int NX = 18;
+        static constexpr int NX = 12;
         static constexpr int NU = 14;
         static constexpr int NP = 12;
         static constexpr int NZ = 3 * 2;
@@ -42,21 +42,10 @@ namespace labrob {
             x_k = x0;
 
             // Standard deviations for P0
-            const double sig_p  = 0.5; 
-            const double sig_v  = 0.5; 
+            const double sig_p  = 0.05; 
+            const double sig_v  = 0.01; 
             const double sig_c  = 0.01;
-            const double sig_ba = 0.3; 
-            const double sig_bw = 0.05;
 
-            // Discrete-time process noise 
-            const double sig_p_proc  = 5e-3;  
-            const double sig_v_proc  = 0.5;  
-            const double sig_c_proc  = 1e-4;  
-            const double sig_ba_rw   = 5e-4;  
-            const double sig_bw_rw   = 5e-5;  
-
-            // Measurement noise for W 
-            const double sig_z = 0.02;  
 
             const Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
 
@@ -66,17 +55,8 @@ namespace labrob {
             P_k.block<3,3>(3,3)    = (sig_v  * sig_v ) * I3;
             P_k.block<3,3>(6,6)    = (sig_c  * sig_c ) * I3;
             P_k.block<3,3>(9,9)    = (sig_c  * sig_c ) * I3;
-            P_k.block<3,3>(12,12)  = (sig_ba * sig_ba) * I3;
-            P_k.block<3,3>(15,15)  = (sig_bw * sig_bw) * I3;
 
-            // ----- V -----
-            V.setZero();
-            V.block<3,3>(0,0)    = (sig_p_proc  * sig_p_proc ) * I3;
-            V.block<3,3>(3,3)    = (sig_v_proc  * sig_v_proc ) * I3;
-            V.block<3,3>(6,6)    = (sig_c_proc  * sig_c_proc ) * I3;
-            V.block<3,3>(9,9)    = (sig_c_proc  * sig_c_proc ) * I3;
-            V.block<3,3>(12,12)  = (sig_ba_rw   * sig_ba_rw  ) * I3;
-            V.block<3,3>(15,15)  = (sig_bw_rw   * sig_bw_rw  ) * I3;
+            compute_noise_process_matrix();
 
             // ----- W -----
             W.setZero();
@@ -86,7 +66,7 @@ namespace labrob {
 
 
 
-        Eigen::Vector<double, NX> compute_KF_estimate(const Eigen::Vector<double, NU>& u_k, const Eigen::Vector<double, NP>& params){
+        Eigen::Vector<double, NX> compute_KF_estimate(const Eigen::Vector<double, NU>& u_k, const Eigen::Vector<double, NP>& params, bool in_contact){
             
             Eigen::Vector<double, 8> q_joint = params.tail<8>();
 
@@ -105,6 +85,17 @@ namespace labrob {
             pinocchio::getFrameJacobian(robot_model_, robot_data_, right_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_wheel_);
             pinocchio::getFrameJacobian(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel_);
             
+            // if robot is flying increase contact noise
+            if(!in_contact){
+                sig_c_proc = 1.0;
+                compute_noise_process_matrix();
+            } else{
+                sig_p_proc  = 0.05;  
+                sig_v_proc  = 0.001;  
+                sig_c_proc  = 1e-4;  
+                compute_noise_process_matrix();
+            }
+
             prediction(u_k);
             correction();
             return x_k;
@@ -113,6 +104,15 @@ namespace labrob {
 
 
         private:
+
+        // Discrete-time process noise 
+        double sig_p_proc  = 0.05;  
+        double sig_v_proc  = 0.001;  
+        double sig_c_proc  = 1e-4;  
+
+        // Measurement noise for W 
+        double sig_z = 2e-5;  
+
 
         Eigen::Vector<double, NX> x_k;      // x_k is [p_fb, v_fb, pc_L, pc_R]  p_fb and v_fb are expressed in world frame
         Eigen::Matrix<double, NX, NX> P_k;
@@ -136,6 +136,17 @@ namespace labrob {
         Eigen::Matrix<double, 6, 6 + 8> J_right_wheel_;
         Eigen::Matrix<double, 6, 6 + 8> J_left_wheel_;
 
+        void compute_noise_process_matrix(){
+            const Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
+            
+            // ----- V -----
+            V.setZero();
+            V.block<3,3>(0,0)    = (sig_p_proc  * sig_p_proc ) * I3;
+            V.block<3,3>(3,3)    = (sig_v_proc  * sig_v_proc ) * I3;
+            V.block<3,3>(6,6)    = (sig_c_proc  * sig_c_proc ) * I3;
+            V.block<3,3>(9,9)    = (sig_c_proc  * sig_c_proc ) * I3;
+        }
+
         void prediction(const Eigen::Vector<double, NU>& u_k){
             
             Eigen::Matrix3d R_base = q_base.toRotationMatrix();
@@ -153,33 +164,18 @@ namespace labrob {
             Eigen::Vector3d n_r = r_virtual_frame_R.col(1);
 
 
-            Eigen::Matrix<double, 3, 6 + 8> H_l = t_l * n_l.transpose() *  J_left_wheel_.bottomRows<3>() * wheel_radius_;
-            Eigen::Matrix<double, 3, 6 + 8> H_r = t_r * n_r.transpose() *  J_right_wheel_.bottomRows<3>() * wheel_radius_;
-            H_l.block<3, 3>(0, 0) *= R_base.transpose();        // rotates v_fb input in base frame for pinocchio conventions
-            H_r.block<3, 3>(0, 0) *= R_base.transpose(); 
-
-            Eigen::Matrix<double, 3, 3> H_lv = H_l.block<3,3>(0,0);
-            Eigen::Matrix<double, 3, 3> H_lbw = H_l.block<3,3>(0,3);
-            Eigen::Matrix<double, 3, 3 + 8> H_lu = H_l.block<3, 3 + 8>(0,3);
-
-            Eigen::Matrix<double, 3, 3> H_rv = H_r.block<3,3>(0,0);
-            Eigen::Matrix<double, 3, 3> H_rbw = H_r.block<3,3>(0,3);
-            Eigen::Matrix<double, 3, 3 + 8> H_ru = H_r.block<3, 3 + 8>(0,3);
+            Eigen::Matrix<double, 3, 3 + 8> H_l = t_l * n_l.transpose() *  J_left_wheel_.block<3,3 + 8>(3,3) * wheel_radius_;
+            Eigen::Matrix<double, 3, 3 + 8> H_r = t_r * n_r.transpose() *  J_right_wheel_.block<3,3 + 8>(3,3) * wheel_radius_;
 
 
             Eigen::Matrix<double, NX, NX> A_k = Eigen::Matrix<double, NX, NX>::Zero();
             A_k.block<3,3>(0, 3) = I3;
-            A_k.block<3,3>(3, 12) = - R_base;
-            A_k.block<3,3>(6, 3) = H_lv;
-            A_k.block<3,3>(9, 3) = H_rv;
-            A_k.block<3,3>(6, 15) = - H_lbw;
-            A_k.block<3,3>(9, 15) = - H_rbw;
             A_k = Eigen::Matrix<double, NX, NX>::Identity() + dt * A_k;
 
             Eigen::Matrix<double, NX, NU> B_k = Eigen::Matrix<double, NX, NU>::Zero();
             B_k.block<3,3>(3, 0) = R_base;
-            B_k.block<3,3 + 8>(6, 3) = H_lu;
-            B_k.block<3,3 + 8>(9, 3) = H_ru;
+            B_k.block<3,3 + 8>(6, 3) = H_l;
+            B_k.block<3,3 + 8>(9, 3) = H_r;
             B_k = B_k * dt;
 
             Eigen::Vector<double, NX> c = Eigen::Vector<double, NX>::Zero();

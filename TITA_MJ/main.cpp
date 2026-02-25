@@ -245,8 +245,7 @@ int main() {
     labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
     
     // Walking manager
-    labrob::JointCommand joint_torque;
-    labrob::JointCommand joint_acceleration;
+    labrob::JointCommand joint_torque, joint_acceleration;
     walking_manager.update(robot_state, joint_torque, joint_acceleration);
 
     // apply a disturbance

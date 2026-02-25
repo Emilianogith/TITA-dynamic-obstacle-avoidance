@@ -13,7 +13,6 @@
 
 #include <cstring>
 
-
 static inline void mat3_mul_vec3(const mjtNum R[9], const mjtNum v[3], mjtNum out[3]) {
   out[0] = R[0]*v[0] + R[3]*v[1] + R[6]*v[2];
   out[1] = R[1]*v[0] + R[4]*v[1] + R[7]*v[2];
@@ -224,12 +223,6 @@ int main() {
   labrob::WalkingManager walking_manager;
   walking_manager.init(initial_robot_state, armatures);
 
-
-  // // zero gravity
-  // mj_model_ptr->opt.gravity[0] = 0.0;
-  // mj_model_ptr->opt.gravity[1] = 0.0;
-  // mj_model_ptr->opt.gravity[2] = 0.0;
-
   
   // Mujoco UI
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
@@ -265,7 +258,7 @@ int main() {
       pinocchio::neutral(full_robot_model));
 
   // ------------------ Filter init ------------------
-  Eigen::Vector<double, 18> x0;
+  Eigen::Vector<double, 12> x0;
   x0.setZero();
   x0(2) = 0.4;
   x0(7) = 0.28;
@@ -280,19 +273,21 @@ int main() {
   u.setZero();
 
   // Logging
-  std::ofstream csv("kf_test.csv");
+  std::ofstream csv("/tmp/kf_test.csv");
   csv << "t,"
       << "p_true_x,p_true_y,p_true_z,"
       << "p_est_x,p_est_y,p_est_z,"
       << "v_true_x,v_true_y,v_true_z,"
       << "v_est_x,v_est_y,v_est_z,"
+      << "p_cL_true_x,p_cL_true_y,p_cL_true_z,"
       << "p_cL_est_x,p_cL_est_y,p_cL_est_z,"
+      << "p_cR_true_x,p_cR_true_y,p_cR_true_z,"
       << "p_cR_est_x,p_cR_est_y,p_cR_est_z\n";
   static std::mt19937 rng(123);  // fixed seed for repeatability
 
 
 
-
+  
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -308,18 +303,35 @@ int main() {
     auto q = robot_state_to_pinocchio_joint_configuration(robot_model, robot_state);
     auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model, robot_state);
 
+
+    pinocchio::Data robot_data = pinocchio::Data(robot_model);
+    pinocchio::FrameIndex right_leg4_idx = robot_model.getFrameId("right_leg_4");
+    pinocchio::FrameIndex left_leg4_idx = robot_model.getFrameId("left_leg_4");
+
+    pinocchio::centerOfMass(robot_model, robot_data, q, qdot);      // compute com pos and vel
+    pinocchio::framesForwardKinematics(robot_model, robot_data, q); // update robot_data.oMf
+    pinocchio::computeJointJacobians(robot_model, robot_data, q);   // compute joint jacobians
+
+    const auto q_fb = q.segment<3>(0);
+    const auto& v_CoM = robot_data.vcom[0];
+    const auto& r_wheel_center = robot_data.oMf[right_leg4_idx];
+    const auto& l_wheel_center = robot_data.oMf[left_leg4_idx];
+    Eigen::Vector3d right_rCP = labrob::get_rCP(r_wheel_center.rotation(), 0.0925);
+    Eigen::Vector3d left_rCP = labrob::get_rCP(l_wheel_center.rotation(), 0.0925);
+    Eigen::Vector3d right_contact = r_wheel_center.translation() + right_rCP;
+    Eigen::Vector3d left_contact = l_wheel_center.translation() + left_rCP;
+
     Eigen::Vector3d v_fb = Eigen::Vector3d(mj_data_ptr->qvel[0], mj_data_ptr->qvel[1], mj_data_ptr->qvel[2]);
 
 
     static std::normal_distribution<double> gauss(0.0, 1.0);
-    static std::uniform_real_distribution<double> unif_angle(-M_PI/180, M_PI/180); // random angle in [-pi, pi]
+    static std::uniform_real_distribution<double> unif_angle(- M_PI/180, M_PI/180); // random angle in [-pi, pi]
 
     auto randn = []() { return gauss(rng); };
 
     Eigen::Quaterniond q_base;
     q_base.coeffs() = q.segment<4>(3);   
     q_base.normalize();
-    std::cout << "Rfb before " << q_base.toRotationMatrix() << std::endl;
 
     Eigen::Vector3d axis(randn(), randn(), randn());
     axis.normalize();
@@ -331,27 +343,32 @@ int main() {
     // Apply rotation:
     Eigen::Quaterniond q_noisy = q_rand * q_base;
     q_noisy.normalize();
-
-    // Write back to params (x,y,z,w)
-    std::cout << "Rfb after " << q_noisy.toRotationMatrix() << std::endl;
+  
     params.segment<4>(0) = q_noisy.coeffs();
     // params.segment<4>(0) = q_base.coeffs();
 
     params.segment<8>(4) = q.segment<8>(7);
 
-    u.segment<3>(0) = Eigen::Vector3d(0,0,9.81);
-    u.segment<3>(3) = qdot.segment<3>(3);
-    u.segment<8>(6) = qdot.segment<8>(6);
+    Eigen::Map<const Eigen::VectorXd> qacc(mj_data_ptr->qacc, mj_model_ptr->nv);  
+    u.segment<3>(0) = q_base.toRotationMatrix().transpose() * (qacc.segment<3>(0) - Eigen::Vector3d(0,0,-9.81)) + Eigen::Vector3d(randn(), randn(), randn());
+    u.segment<3>(3) = qdot.segment<3>(3) + Eigen::Vector3d(randn(), randn(), randn());
+    
+    Eigen::VectorXd noise_q_dot(8);
+    noise_q_dot << randn(), randn(), randn(), randn(), randn(), randn(), randn(), randn();
+    u.segment<8>(6) = qdot.segment<8>(6) + noise_q_dot;
 
     // ---- Run filter ----
-    Eigen::Vector<double,18> x_est = state_filter.compute_KF_estimate(u, params);
+    bool in_contact = (robot_state.contact_points.size() != 0) ? true : false;    // TODO: migliora il contact detector
+    Eigen::Vector<double,12> x_est = state_filter.compute_KF_estimate(u, params, in_contact);
     // ---- Log ----
     csv << mj_data_ptr->time << ","
-        << q(0) << "," << q(1) << "," << q(2) << ","
+        << q_fb(0) << "," << q_fb(1) << "," << q_fb(2) << ","
         << x_est(0) << "," << x_est(1) << "," << x_est(2) << ","
         << v_fb(0) << "," << v_fb(1) << "," << v_fb(2) << ","
         << x_est(3) << "," << x_est(4) << "," << x_est(5) << ","
+        << left_contact(0) << "," << left_contact(1) << "," << left_contact(2) << ","
         << x_est(6) << "," << x_est(7) << "," << x_est(8) << ","
+        << right_contact(0) << "," << right_contact(1) << "," << right_contact(2) << ","
         << x_est(9) << "," << x_est(10) << "," << x_est(11) << "\n";
 
     labrob::RobotState new_robot_state;
@@ -367,10 +384,12 @@ int main() {
     }
 
 
+    // std::cout << "TRUE robot_state.position " << robot_state.position << std::endl;
+    // std::cout << "new_robot_state.position " << new_robot_state.position << std::endl;
 
 
     // Walking manager
-    labrob::JointCommand joint_acceleration;
+    labrob::JointCommand joint_torque, joint_acceleration;
     walking_manager.update(robot_state, joint_torque, joint_acceleration);
     
     // apply a disturbance
