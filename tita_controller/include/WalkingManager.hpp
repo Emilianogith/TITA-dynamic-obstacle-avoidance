@@ -14,14 +14,14 @@ class WalkingManager {
  public:
 
   bool init(const labrob::RobotState& initial_robot_state, 
-      std::map<std::string, double> &armatures,
-      const pinocchio::Model& robot_model);
+    std::map<std::string, double> &armatures,
+    const pinocchio::Model& robot_model);
 
   void update(
       const labrob::RobotState& robot_state,
-      labrob::JointCommand& joint_torque,
+      labrob::JointCommand& joint_torque, 
       labrob::JointCommand& joint_acceleration,
-      const double t_msec_
+      double t_msec_
   );
 
   labrob::DesiredConfiguration des_configuration_;

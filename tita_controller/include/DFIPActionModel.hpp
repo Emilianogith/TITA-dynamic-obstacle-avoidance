@@ -33,7 +33,7 @@ public:
         m_(m)
   {
     // default weights
-    w_pcomxy_k_ = 10.0;  
+    w_pcomxy_k_ = 1000.0;  
     w_pcomz_k_  = 1000.0;
     w_vcomxy_k_ = 10.0; 
     w_vcomz_k_  = 50.0;
@@ -41,18 +41,18 @@ public:
     w_v_k_      = 0.0;
     w_vcz_k_    = 0.0;
 
-    w_theta_k_  = 0.0;
+    w_theta_k_  = 100.0;
     w_w_k_      = 5.0;
 
     w_a_k_      = 0.1;
     w_acz_k_    = 0.0;
     
-    w_alpha_k_  = 0.001;
+    w_alpha_k_  = 0.1;
 
-    w_fcxy_k_   = 0.0000001;     // 0.0000001;
-    w_fcz_k_    = 0.0001;     // 0.0000001;
+    w_fcxy_k_   = 0.00001;       // 0.0000001;
+    w_fcz_k_    = 0.0001;          // 0.0000001;
 
-    w_eq_k_     = 100000000.0;     // 100000000;
+    w_eq_k_     = 1000000.0;     // 100000000;
 
     x_ref_k_.setZero(NX_);
     u_ref_k_.setZero(NU_);
@@ -74,8 +74,8 @@ public:
 
 
    void checkJumpState(const Eigen::VectorXd& x_ref) {
-    if (std::fabs(x_ref(9)) > 1e-3) {
-      jump_state = true;  // check if desired contact height is greater than 0.0
+    if (x_ref(13) == 3) {
+      jump_state = true;  // check if planned state is jump_state = 3 :: flight phase
 
       w_pcomxy_k_ = 10.0;
       w_pcomz_k_  = 1000.0;
@@ -102,15 +102,15 @@ public:
       jump_state = false;
 
       // default weights
-      w_pcomxy_k_ = 10.0;
+      w_pcomxy_k_ = 1000.0;
       w_pcomz_k_  = 1000.0;
       w_vcomxy_k_ = 10.0;
-      w_vcomz_k_  = 100.0;
+      w_vcomz_k_  = 50.0;
       w_c_k_      = 0.0; 
       w_v_k_      = 0.0;
       w_vcz_k_    = 0.0;
 
-      w_theta_k_  = 0.0;
+      w_theta_k_  = 100.0;
       w_w_k_      = 5.0;
 
       w_a_k_      = 0.1;
@@ -118,7 +118,7 @@ public:
       
       w_alpha_k_  = 0.001;
 
-      w_fcxy_k_   = 0.0000001;
+      w_fcxy_k_   = 0.00001;
       w_fcz_k_    = 0.0001;
     }
   }
@@ -227,6 +227,7 @@ public:
     double theta = x(10);
     double v     = x(11);
     double w     = x(12);
+
     
     double running_cost = 0.0;
     running_cost = 0.5 * w_pcomxy_k_ * (pcom.segment<2>(0) - x_ref_k_.segment<2>(0)).squaredNorm()
@@ -433,7 +434,8 @@ public:
       double theta = x(10);
       double v     = x(11);
       double w     = x(12);
-   
+
+      
       Eigen::MatrixXd I3 = Eigen::MatrixXd::Identity(3, 3);
       Eigen::MatrixXd I2 = Eigen::MatrixXd::Identity(2, 2);
 
@@ -493,39 +495,35 @@ public:
   }
 
 
+  Eigen::VectorXd x_ref_k_;
+  Eigen::VectorXd u_ref_k_;
+  bool jump_state = false;
 
-
-
-Eigen::VectorXd x_ref_k_;
-Eigen::VectorXd u_ref_k_;
-bool jump_state = false;
 private:
-
-// weights
+  // weights
   double w_pcomz_k_;
   double w_pcomxy_k_;
   double w_vcomxy_k_;     
   double w_vcomz_k_; 
-  
+
   double w_c_k_;
   double w_v_k_;
   double w_vcz_k_;
   double w_theta_k_;
   double w_w_k_;
-  
+
   double w_a_k_;
   double w_acz_k_;
   double w_alpha_k_;
   double w_fcz_k_;
   double w_fcxy_k_;
   double w_eq_k_;
-  
+
   const int NX_;
   const int NU_;
   double dt_;
-  
+
   double d_off_ = 0.1;
   double m_     = 27;
   Eigen::Vector3d grav;
 };
-

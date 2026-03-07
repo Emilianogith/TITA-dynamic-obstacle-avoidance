@@ -26,7 +26,7 @@ struct DesiredConfiguration {
   Eigen::Vector3d linear_velocity;
   Eigen::Vector3d angular_velocity;
 
-  Eigen::VectorXd qjnt, qjntdot, qjntddot;
+  Eigen::VectorXd qjnt, qjntdot, qjntddot, tau_prev;
   
   labrob::ee3 com;
   labrob::ee6 lwheel, rwheel; // wheel frame position + orientation

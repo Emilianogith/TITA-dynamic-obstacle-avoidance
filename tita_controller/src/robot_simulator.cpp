@@ -64,13 +64,13 @@ public:
 
 
         // Load IMU data from file
-        if (!load_imu_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_giu_su/imu_log.txt")) {
+        if (!load_imu_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_fermo/imu_log.txt")) {
             RCLCPP_ERROR(this->get_logger(), "Failed to load imu.txt");
         }
         imu_index_ = 0;
 
         // Load joint data from file
-        if (!load_joint_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_giu_su/joint_state_log.txt")) {
+        if (!load_joint_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_fermo/joint_state_log.txt")) {
             RCLCPP_ERROR(this->get_logger(), "Failed to load joint_state.txt");
         }
         joint_index_ = 0;
@@ -112,7 +112,7 @@ private:
                 ss >> tmp >> effort;           // effort: value
 
             } catch (...) {
-                RCLCPP_WARN(this->get_logger(), "Skipping invalid line: %s", line.c_str());
+                // RCLCPP_WARN(this->get_logger(), "Skipping invalid line: %s", line.c_str());
                 continue;
             }
 
@@ -133,9 +133,9 @@ private:
             sample.efforts.push_back(effort);
 
             // Debug print each joint
-            RCLCPP_INFO(this->get_logger(),
-                "Timestamp: %.6f Joint: %s Pos: %.6f Vel: %.6f Effort: %.6f",
-                timestamp, joint_name.c_str(), pos, vel, effort);
+            // RCLCPP_INFO(this->get_logger(),
+            //     "Timestamp: %.6f Joint: %s Pos: %.6f Vel: %.6f Effort: %.6f",
+            //     timestamp, joint_name.c_str(), pos, vel, effort);
         }
 
         // Push the last sample
@@ -181,11 +181,11 @@ private:
                 ss >> label; // "linear_acceleration:"
                 ss >> imu.accel_x >> imu.accel_y >> imu.accel_z;
 
-                RCLCPP_INFO(this->get_logger(),
-                "IMU: orient=(%.6f, %.6f, %.6f, %.6f) ang_vel=(%.6f, %.6f, %.6f) accel=(%.6f, %.6f, %.6f)",
-                imu.orientation_x, imu.orientation_y, imu.orientation_z, imu.orientation_w,
-                imu.angular_x, imu.angular_y, imu.angular_z,
-                imu.accel_x, imu.accel_y, imu.accel_z);
+                // RCLCPP_INFO(this->get_logger(),
+                // "IMU: orient=(%.6f, %.6f, %.6f, %.6f) ang_vel=(%.6f, %.6f, %.6f) accel=(%.6f, %.6f, %.6f)",
+                // imu.orientation_x, imu.orientation_y, imu.orientation_z, imu.orientation_w,
+                // imu.angular_x, imu.angular_y, imu.angular_z,
+                // imu.accel_x, imu.accel_y, imu.accel_z);
 
             } catch (const std::exception &e) {
                 RCLCPP_WARN(this->get_logger(), "Skipping invalid line: %s", line.c_str());

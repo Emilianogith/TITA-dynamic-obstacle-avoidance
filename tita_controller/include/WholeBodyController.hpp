@@ -44,7 +44,10 @@ struct WholeBodyControllerParams {
 
   double mu;
 
+  double weight_tau_reg;
+
   static WholeBodyControllerParams getDefaultParams();
+  static WholeBodyControllerParams getRobustParams();
   static WholeBodyControllerParams getJumpParams();
 };
 

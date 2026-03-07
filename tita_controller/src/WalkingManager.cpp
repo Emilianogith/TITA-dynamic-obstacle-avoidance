@@ -4,8 +4,8 @@
 namespace labrob {
 
 bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
-                     std::map<std::string, double> &armatures,
-                     const pinocchio::Model& robot_model) {
+                    std::map<std::string, double> &armatures,
+                    const pinocchio::Model& robot_model) {
     
     robot_model_ = &robot_model;
     robot_data_ = pinocchio::Data(*robot_model_);
@@ -22,6 +22,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     wheel_radius_ = 0.0925;
     // Desired configuration:
+    des_configuration_.tau_prev = Eigen::VectorXd::Zero(njnt);
     des_configuration_.qjnt = Eigen::VectorXd::Zero(njnt);
     des_configuration_.qjnt << 
     0.0,   // joint_left_leg_1
@@ -49,11 +50,10 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     des_configuration_.base_link.vel = Eigen::Vector3d::Zero();
     des_configuration_.base_link.acc = Eigen::Vector3d::Zero();
     des_configuration_.in_contact = true;
-    
 
 
     // Init WBC:
-    auto params = WholeBodyControllerParams::getDefaultParams();
+    auto params = WholeBodyControllerParams::getRobustParams();
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         *robot_model_,
@@ -91,7 +91,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
     // plan the offline trajectory
-    walkingPlanner_.offline_plan(p_CoM, 0.001 * controller_timestep_msec_, true);
+    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, false, p_CoM);           // SET LOGGING TO FALSE FOR REAL-TIME EXECUTION
 
     // initialize the MPC
     Eigen::VectorXd x_IN(18);
@@ -103,19 +103,20 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     x_IN.segment<3>(15) = curr_pr_vel;
     mpc_.set_planner(walkingPlanner_, 0.001 * controller_timestep_msec_);
     mpc_.init_solver(x_IN);
+    // mpc_.solve(x_IN);
 
 
     // Init log files:
     // TODO: may be better to use a proper logging system such as glog.
-    // state_log_file_.open("/tmp/state_log_file.txt");
-    // state_log_file_ << "time,"
-    //      << "com_x,com_y,com_z,"
-    //      << "com_x_des,com_y_des,com_z_des,"
-    //      << "wheel_l_x,wheel_l_y,wheel_l_z,"
-    //      << "wheel_l_x_des,wheel_l_y_des,wheel_l_z_des,"
-    //      << "wheel_r_x,wheel_r_y,wheel_r_z,"
-    //      << "wheel_r_x_des,wheel_r_y_des,wheel_r_z_des"
-    //      << std::endl;
+    state_log_file_.open("/tmp/state_log_file.txt");
+    state_log_file_ << "time,"
+         << "com_x,com_y,com_z,"
+         << "com_x_des,com_y_des,com_z_des,"
+         << "wheel_l_x,wheel_l_y,wheel_l_z,"
+         << "wheel_l_x_des,wheel_l_y_des,wheel_l_z_des,"
+         << "wheel_r_x,wheel_r_y,wheel_r_z,"
+         << "wheel_r_x_des,wheel_r_y_des,wheel_r_z_des"
+         << std::endl;
 
     return true;
     }
@@ -145,6 +146,44 @@ void WalkingManager::update(
     Eigen::Vector3d left_rCP = labrob::get_rCP(l_wheel_center.rotation(), whole_body_controller_ptr_->wheel_radius_);
     Eigen::Vector3d right_contact = r_wheel_center.translation() + right_rCP;
     Eigen::Vector3d left_contact = l_wheel_center.translation() + left_rCP;
+
+
+    // // LQR-based MPC
+    // auto start_time_LQR = std::chrono::high_resolution_clock::now();
+    // labrob::LQR lqr(des_configuration_.com.pos(2));
+    // const double& x_com = p_CoM(0);
+    // const double& vx_com = v_CoM(0);
+    // const double& ax_com = robot_data_.acom[0](0);
+    // const double& x_prev_zmp = des_configuration_.lwheel.pos.p(0);
+    // const double& vx_prev_zmp = des_configuration_.lwheel.vel(0);
+    // const double& ax_prev_zmp = des_configuration_.lwheel.acc(0);
+
+    // lqr.solve(x_com, vx_com, ax_com, x_prev_zmp, vx_prev_zmp, ax_prev_zmp);
+    // SolutionLQR sol_lqr = lqr.get_solution();
+
+    // auto end_time_LQR = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_time_LQR = (end_time_LQR - start_time_LQR) * 1000;
+    // std::cout << "LQR solve took: " << elapsed_time_LQR.count() << " ms" << std::endl;
+
+    // // if (std::fabs(t_msec_ - 9360.0) < 0.5){
+    // //     lqr.record_logs(t_msec_);
+    // // }
+   
+    // des_configuration_.com.pos(0) = sol_lqr.com.pos;  
+    // des_configuration_.com.vel(0) = sol_lqr.com.vel;
+    // des_configuration_.com.acc(0) = sol_lqr.com.acc; 
+
+    // des_configuration_.lwheel.pos.p(0) = sol_lqr.zmp.pos;
+    // des_configuration_.lwheel.pos.p(1) = left_contact(1);
+    // des_configuration_.lwheel.vel(0) = sol_lqr.zmp.vel;
+    // des_configuration_.lwheel.acc(0) = sol_lqr.zmp.acc;
+
+    // des_configuration_.rwheel.pos.p(0) = sol_lqr.zmp.pos;
+    // des_configuration_.rwheel.pos.p(1) = right_contact(1);
+    // des_configuration_.rwheel.vel(0) = sol_lqr.zmp.vel;
+    // des_configuration_.rwheel.acc(0) = sol_lqr.zmp.acc;
+
+
     
 
     Eigen::MatrixXd J_left_wheel = Eigen::MatrixXd::Zero(6, robot_model_->nv);;
@@ -159,13 +198,36 @@ void WalkingManager::update(
 
 
     // jump routine
+
+    // maximum height obstacle
     // if (std::fabs(t_msec_ - 2000.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_);
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.36);
+    // }
+
+    // high speed obstacle
+    // if (std::fabs(t_msec_ - 4000.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.21);
+    // }
+
+   
+
+
+    // 3-obstacle
+    // if (std::fabs(t_msec_ - 1200.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.15);
+    // }
+
+    // if (std::fabs(t_msec_ - 2300.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.25);
+    // }
+
+    // if (std::fabs(t_msec_ - 3800.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.30);
     // }
 
     mpc_.t_msec = t_msec_;
 
-    // log mpc logs
+    // log mpc logs                                                                 // COMMENT FOR REAL-TIME EXECUTION
     // if (static_cast<int>(t_msec_) % 10 == 0){
     //     mpc_.record_logs = true;
     // }
@@ -179,6 +241,18 @@ void WalkingManager::update(
     x_IN.segment<3>(9) = right_contact;
     x_IN.segment<3>(12) = curr_pl_vel;
     x_IN.segment<3>(15) = curr_pr_vel;
+
+    // for open loop compuation
+    // SolutionMPC sol = mpc_.get_solution();
+    // Eigen::VectorXd x_IN(18);
+    // x_IN.segment<3>(0) = sol.com.pos;
+    // x_IN.segment<3>(3) = sol.com.vel;
+    // x_IN.segment<3>(6) = sol.pl.pos;
+    // x_IN.segment<3>(9) = sol.pr.pos;
+    // x_IN.segment<3>(12) = sol.pl.vel;
+    // x_IN.segment<3>(15) = sol.pr.vel;
+
+
 
     
     // auto t1 = std::chrono::system_clock::now();
@@ -211,60 +285,62 @@ void WalkingManager::update(
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
 
-    des_configuration_.in_contact = 1 - mpc_.get_jumpingState();
+    // get jumping phase from planned trajectory
+        // jump_state = 0 : contact phase
+        // jump_state = 1 : pre-jump phase
+        // jump_state = 2 : ground-detachment phase
+        // jump_state = 3 : flight phase
+        // jump_state = 4 : post-jump phase
+    int jump_state = walkingPlanner_.get_jump_phase_at_time_ms(t_msec_);
+
+    des_configuration_.in_contact = (jump_state == 3) ? false : true;
 
     // change WBC params in jump state
-    if (!des_configuration_.in_contact) {
-        auto jump_params = WholeBodyControllerParams::getDefaultParams();
-        jump_params.Kp_motion = 65.0;
-        jump_params.Kd_motion = 40.0;   
-                   
-        jump_params.Kp_wheel = 65.0;       
-        jump_params.Kd_wheel = 40.0;                 
+    switch (jump_state) {
 
-        jump_params.weight_q_ddot = 1e-6;                
-        jump_params.weight_com = 0.05;                     
-        jump_params.weight_lwheel = 0.05;                 
-        jump_params.weight_rwheel = 0.05;                 
-        jump_params.weight_base = 0.01;              
-        jump_params.weight_angular_momentum = 0.0;   
-        jump_params.weight_regulation = 0.0; 
+        case 3: {               // flight phase
+            auto jump_params = WholeBodyControllerParams::getJumpParams();   
+            whole_body_controller_ptr_->params_ = jump_params;
+            break;
+        }
+        
+        case 1: {               // pre-jump phase                                        
+            auto params = WholeBodyControllerParams::getDefaultParams();        
+            whole_body_controller_ptr_->params_ = params;       
+            break;
+        }  
 
-        jump_params.cmm_selection_matrix_x = 1e-6;       
-        jump_params.cmm_selection_matrix_y = 1e-6;       
-        jump_params.cmm_selection_matrix_z = 1e-4;
-                                            
-        whole_body_controller_ptr_->params_ = jump_params;
-    } else {                                                        // TODO: avoid updating the params every cycle 
-        auto params = WholeBodyControllerParams::getDefaultParams();
-        whole_body_controller_ptr_->params_ = params;     
+        case 2: {               // ground-detachment phase
+            auto params = WholeBodyControllerParams::getDefaultParams(); 
+
+            // penalize angular momenutum 
+            params.weight_angular_momentum = 9.0;
+            params.cmm_selection_matrix_x = 1000;       
+            params.cmm_selection_matrix_y = 1000;       
+            params.cmm_selection_matrix_z = 1e-4;
+            whole_body_controller_ptr_->params_ = params;  
+            break; 
+        }  
+
+        case 4: {               // post-jump phase
+            auto params = WholeBodyControllerParams::getRobustParams();   
+            whole_body_controller_ptr_->params_ = params;
+            break;
+        }
+
     }
 
-    // prova regulation --------------------
-    // auto params = WholeBodyControllerParams::getDefaultParams();
-    // params.Kp_motion = 0.0;               
-    // params.Kd_motion = 0.0;               
-    // params.Kp_regulation = 0.8;            
-    // params.Kd_regulation = 0.2;      
 
-    // params.Kp_wheel = 0.0;                  
-    // params.Kd_wheel = 0.0;                         
-
-    // params.weight_q_ddot = 1e-6;                 
-    // params.weight_com = 0.0;                        
-    // params.weight_lwheel = 0.0;                          
-    // params.weight_rwheel = 0.0;                         
-    // params.weight_base = 0.0;                       
-    // params.weight_angular_momentum = 0.0; 
-    // params.weight_regulation = 0.1; 
-    // whole_body_controller_ptr_->params_ = params;   
-    
-    // des_configuration_.in_contact = false;       // PER PROVA REGULATION
-    // ---------------------------------------------
-    
     whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_, joint_torque, joint_acceleration);
 
-
+    // for reducing chattering
+    int idx = 0;
+    for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_->njoints; ++joint_id, ++idx) {
+        const auto& joint_name = robot_model_->names[joint_id];
+        des_configuration_.tau_prev(idx) = joint_torque[joint_name];
+    }
+    
+    
 
     // auto end_time = std::chrono::system_clock::now();
     // auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -275,19 +351,19 @@ void WalkingManager::update(
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_
     //       milliseconds.
-    // t_msec_ += controller_timestep_msec_;
+    t_msec_ += controller_timestep_msec_;
 
 
     // Log:
-    // state_log_file_
-    //     << t_msec_ << ","
-    //     << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","
-    //     << des_configuration_.com.pos(0) << "," << des_configuration_.com.pos(1) << "," << des_configuration_.com.pos(2) << ","
-    //     << l_wheel_center.translation()(0) << "," << l_wheel_center.translation()(1) << "," << l_wheel_center.translation()(2) << ","
-    //     << des_configuration_.lwheel.pos.p(0) << "," << des_configuration_.lwheel.pos.p(1) << "," << des_configuration_.lwheel.pos.p(2) << ","
-    //     << r_wheel_center.translation()(0) << "," << r_wheel_center.translation()(1) << "," << r_wheel_center.translation()(2) << ","
-    //     << des_configuration_.rwheel.pos.p(0) << "," << des_configuration_.rwheel.pos.p(1) << "," << des_configuration_.rwheel.pos.p(2)
-    //     << std::endl;
+    state_log_file_
+        << t_msec_ << ","
+        << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","
+        << des_configuration_.com.pos(0) << "," << des_configuration_.com.pos(1) << "," << des_configuration_.com.pos(2) << ","
+        << l_wheel_center.translation()(0) << "," << l_wheel_center.translation()(1) << "," << l_wheel_center.translation()(2) << ","
+        << des_configuration_.lwheel.pos.p(0) << "," << des_configuration_.lwheel.pos.p(1) << "," << des_configuration_.lwheel.pos.p(2) << ","
+        << r_wheel_center.translation()(0) << "," << r_wheel_center.translation()(1) << "," << r_wheel_center.translation()(2) << ","
+        << des_configuration_.rwheel.pos.p(0) << "," << des_configuration_.rwheel.pos.p(1) << "," << des_configuration_.rwheel.pos.p(2)
+        << std::endl;
 }
 
 } // end namespace labrob

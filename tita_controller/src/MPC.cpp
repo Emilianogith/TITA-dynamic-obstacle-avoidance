@@ -1,6 +1,4 @@
 #include <MPC.hpp>
-
-
 #include <chrono>
 
 
@@ -13,6 +11,7 @@ double wrapToPi(double a) {
 double unwrapNear(double theta_wrapped, double theta_prev) {
   return theta_prev + wrapToPi(theta_wrapped - theta_prev);
 }
+
 
 Eigen::Vector<double, labrob::MPC::NX> labrob::MPC::get_DFIP_state(Eigen::Vector<double, N_IN> x_IN,
                                                                    bool set_d = false){
@@ -118,7 +117,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
 
   // auto t1 = std::chrono::high_resolution_clock::now();
   // std::chrono::duration<double, std::milli> ms = t1 - t0;
-  // std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
+  // std::cout << "MPC Solve time: " << ms.count() << " ms\n"<< std::endl;
 
 
 

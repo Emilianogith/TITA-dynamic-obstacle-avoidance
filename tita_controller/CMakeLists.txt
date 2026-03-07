@@ -28,8 +28,8 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
-# find_package(Eigen3 REQUIRED)
-# find_package(pinocchio REQUIRED)
+
+find_package(std_srvs REQUIRED)         # for the services
 
 find_package(glfw3 REQUIRED)
 find_package(pinocchio REQUIRED)
@@ -70,18 +70,24 @@ target_link_libraries(UtilsLib
   crocoddyl::crocoddyl
 )
 
-
+# topic reder
 add_executable(topic_reader src/topic_reader.cpp)
 ament_target_dependencies(topic_reader rclcpp std_msgs nav_msgs sensor_msgs)
 
+# robot simulator
 add_executable(robot_simulator src/robot_simulator.cpp)
 ament_target_dependencies(robot_simulator rclcpp std_msgs nav_msgs sensor_msgs)
 
+# conroller manager
+add_executable(controller_manager src/control_manager.cpp)
 
-# controller node
-add_executable(controller_node 
-  src/controller_node.cpp
+ament_target_dependencies(controller_manager
+  rclcpp
+  std_msgs
+  std_srvs   
 )
+# controller node
+add_executable(controller_node src/controller_node.cpp)
 
 target_link_libraries(controller_node 
   glfw
@@ -101,32 +107,12 @@ sensor_msgs
 tf2
 tf2_ros
 geometry_msgs
+std_srvs
 )
-
-
-
-# simple_PD node
-add_executable(simple_PD 
-  src/simple_PD.cpp
-)
-
-target_link_libraries(simple_PD 
-  glfw
-  UtilsLib
-)
-
-ament_target_dependencies(simple_PD 
-rclcpp 
-std_msgs
-sensor_msgs
-)
-
 
 
 # sim controller node
-add_executable(sim_controller_node 
-  src/controller_node_sim.cpp
-)
+add_executable(sim_controller_node src/controller_node_sim.cpp)
 
 target_link_libraries(sim_controller_node 
   glfw
@@ -147,55 +133,27 @@ sensor_msgs
 tf2
 tf2_ros
 geometry_msgs
+std_srvs
 )
 
-
-
-
-
-# sim controller effort node
-add_executable(sim_effort_controller_node 
-  src/controller_sim_effort.cpp
-)
-
-target_link_libraries(sim_effort_controller_node 
-  glfw
-  mujoco::mujoco
-  UtilsLib
-)
-
-target_include_directories(sim_effort_controller_node 
- PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-ament_target_dependencies(sim_effort_controller_node 
-rclcpp 
-std_msgs
-nav_msgs
-sensor_msgs
-tf2
-tf2_ros
-geometry_msgs
-)
 
 
 
 
 install(TARGETS
   topic_reader
+  controller_node
   sim_controller_node
-  sim_effort_controller_node
-  simple_PD
   robot_simulator
+  controller_manager
   DESTINATION lib/${PROJECT_NAME})
 
 
 # Install Python executables
 install(PROGRAMS
-  python_src/save_urdf.py           # for savingbthe urdf
-  python_src/send_urdf.py           # for testng 
-  DESTINATION lib/${PROJECT_NAME}   # this is where ROS 2 expects python executables
+  python_src/save_urdf.py
+  python_src/send_urdf.py
+  DESTINATION lib/${PROJECT_NAME}  
 )
 
 
@@ -213,3 +171,4 @@ if(BUILD_TESTING)
 endif()
 
 ament_package()
+

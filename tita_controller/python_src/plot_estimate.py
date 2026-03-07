@@ -2,10 +2,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ======================
-# Load CSV
-# ======================
-csv_file = "../../kf_test.csv"   # change path if needed
+from pathlib import Path
+
+csv_file = Path.home() / "Desktop/ros2_ws/robot_logs/kf_test.csv"   # change path if needed
 df = pd.read_csv(csv_file)
 
 t = df["t"] - df["t"].iloc[0]  # start time at 0
@@ -29,14 +28,14 @@ def plot_xyz(t, x, y, z, title, ylabel):
 # 1️⃣ odom vs Estimated Position
 # ======================
 plt.figure(figsize=(10, 5))
-plt.plot(t, df["p_odom_x"], "--", label="p_odom_x")
-plt.plot(t, df["p_est_x"], label="p_est_x")
+plt.plot(t, df["p_odom_x"], "--", label="p_odom_x", color="C0")
+plt.plot(t, df["p_est_x"], label="p_est_x", color="C0")
 
-plt.plot(t, df["p_odom_y"], "--", label="p_odom_y")
-plt.plot(t, df["p_est_y"], label="p_est_y")
+plt.plot(t, df["p_odom_y"], "--", label="p_odom_y", color="C1")
+plt.plot(t, df["p_est_y"], label="p_est_y", color="C1")
 
-plt.plot(t, df["p_odom_z"], "--", label="p_odom_z")
-plt.plot(t, df["p_est_z"], label="p_est_z")
+plt.plot(t, df["p_odom_z"], "--", label="p_odom_z", color="C2")
+plt.plot(t, df["p_est_z"], label="p_est_z", color="C2")
 
 plt.xlabel("Time [s]")
 plt.ylabel("Position [m]")
@@ -50,15 +49,14 @@ plt.tight_layout()
 # ======================
 pos_err = np.sqrt(
     (df["p_est_x"] - df["p_odom_x"])**2 +
-    (df["p_est_y"] - df["p_odom_y"])**2 +
-    (df["p_est_z"] - df["p_odom_z"])**2
+    (df["p_est_y"] - df["p_odom_y"])**2 
 )
 
 plt.figure(figsize=(10, 4))
 plt.plot(t, pos_err)
 plt.xlabel("Time [s]")
-plt.ylabel("Position Error [m]")
-plt.title("Base Position Error Norm")
+plt.ylabel("Position difference [m]")
+plt.title("Base XY position Estimate - Odom")
 plt.grid()
 plt.tight_layout()
 

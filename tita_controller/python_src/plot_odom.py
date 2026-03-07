@@ -1,6 +1,8 @@
 import re
 import matplotlib.pyplot as plt
 
+from pathlib import Path
+
 timestamps = []
 xs, ys, zs = [], [], []
 wx, wy, wz = [], [], []
@@ -14,7 +16,8 @@ angular_vel_re = re.compile(
 current_timestamp = None
 current_pos = None
 
-with open("../../odom.txt", "r") as f:
+log_path = Path.home() / "Desktop/ros2_ws/robot_logs/odom.txt" 
+with open(log_path, "r") as f:
     for line in f:
         ts_match = timestamp_re.search(line)
         if ts_match:
