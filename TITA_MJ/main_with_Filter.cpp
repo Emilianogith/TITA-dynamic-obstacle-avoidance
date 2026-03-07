@@ -358,7 +358,7 @@ int main() {
     u.segment<8>(6) = qdot.segment<8>(6) + noise_q_dot;
 
     // ---- Run filter ----
-    bool in_contact = (robot_state.contact_points.size() != 0) ? true : false;    // TODO: migliora il contact detector
+    bool in_contact = (robot_state.contact_points.size() != 0) ? true : false;    // TODO: migliora il contact detector (perche se ci sono ostacoli in simulazione non funziona cosi)
     Eigen::Vector<double,12> x_est = state_filter.compute_KF_estimate(u, params, in_contact);
     // ---- Log ----
     csv << mj_data_ptr->time << ","

@@ -77,24 +77,24 @@ def main():
     # COM position
     plot_xyz(
         axes[0, 0], t,
-        df["p_true_x"], df["p_true_y"], df["p_true_z"],
         df["p_est_x"],  df["p_est_y"],  df["p_est_z"],
-        "COM Position: True vs Estimated", "Position [m]"
+        df["p_true_x"], df["p_true_y"], df["p_true_z"],
+        "Base Position: True vs Estimated", "Position [m]"
     )
 
     # Left contact position
     plot_xyz(
         axes[1, 0], t,
-        df["p_cL_true_x"], df["p_cL_true_y"], df["p_cL_true_z"],
         df["p_cL_est_x"],  df["p_cL_est_y"],  df["p_cL_est_z"],
+        df["p_cL_true_x"], df["p_cL_true_y"], df["p_cL_true_z"],
         "Left Contact Position: True vs Estimated", "Position [m]"
     )
 
     # Right contact position
     plot_xyz(
         axes[2, 0], t,
-        df["p_cR_true_x"], df["p_cR_true_y"], df["p_cR_true_z"],
         df["p_cR_est_x"],  df["p_cR_est_y"],  df["p_cR_est_z"],
+        df["p_cR_true_x"], df["p_cR_true_y"], df["p_cR_true_z"],
         "Right Contact Position: True vs Estimated", "Position [m]"
     )
     axes[2, 0].set_xlabel("Time [s]")
@@ -102,8 +102,8 @@ def main():
     # Base velocity
     plot_xyz(
         axes[0, 1], t,
-        df["v_true_x"], df["v_true_y"], df["v_true_z"],
         df["v_est_x"],  df["v_est_y"],  df["v_est_z"],
+        df["v_true_x"], df["v_true_y"], df["v_true_z"],
         "Base velocity: True vs Estimated", "Velocity [m/s]"
     )
 
@@ -136,7 +136,7 @@ def main():
         plot_err_xyz(
             ax_err[0, 0], t,
             df["e_p_x"], df["e_p_y"], df["e_p_z"],
-            "COM Position Error (est - true)", "Error [m]"
+            "Base Position Error (est - true)", "Error [m]"
         )
 
         plot_err_xyz(
