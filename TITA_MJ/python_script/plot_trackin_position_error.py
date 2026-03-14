@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # PLOT DES COM vs DESIRED 
 # Load CSV, skip header row
-log_data = np.loadtxt("/tmp/state_log_file.txt", delimiter=",", skiprows=1)
+log_data = np.loadtxt("/tmp/wbc_log.txt", delimiter=",", skiprows=1)
 
 # Extract columns (based on your file)
 t_ms  = log_data[:, 0]     # time in ms

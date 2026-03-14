@@ -127,18 +127,8 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     mpc_.init_solver(x_IN);
     // mpc_.solve(x_IN);
 
-
-    // Init log files:
-    // TODO: may be better to use a proper logging system such as glog.
-    state_log_file_.open("/tmp/state_log_file.txt");
-    state_log_file_ << "time,"
-         << "com_x,com_y,com_z,"
-         << "com_x_des,com_y_des,com_z_des,"
-         << "wheel_l_x,wheel_l_y,wheel_l_z,"
-         << "wheel_l_x_des,wheel_l_y_des,wheel_l_z_des,"
-         << "wheel_r_x,wheel_r_y,wheel_r_z,"
-         << "wheel_r_x_des,wheel_r_y_des,wheel_r_z_des"
-         << std::endl;
+    // Init logger
+    logger_.reserve(20000);
 
     return true;
     }
@@ -168,45 +158,6 @@ void WalkingManager::update(
     Eigen::Vector3d right_contact = r_wheel_center.translation() + right_rCP;
     Eigen::Vector3d left_contact = l_wheel_center.translation() + left_rCP;
 
-
-    // // LQR-based MPC
-    // auto start_time_LQR = std::chrono::high_resolution_clock::now();
-    // labrob::LQR lqr(des_configuration_.com.pos(2));
-    // const double& x_com = p_CoM(0);
-    // const double& vx_com = v_CoM(0);
-    // const double& ax_com = robot_data_.acom[0](0);
-    // const double& x_prev_zmp = des_configuration_.lwheel.pos.p(0);
-    // const double& vx_prev_zmp = des_configuration_.lwheel.vel(0);
-    // const double& ax_prev_zmp = des_configuration_.lwheel.acc(0);
-
-    // lqr.solve(x_com, vx_com, ax_com, x_prev_zmp, vx_prev_zmp, ax_prev_zmp);
-    // SolutionLQR sol_lqr = lqr.get_solution();
-
-    // auto end_time_LQR = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed_time_LQR = (end_time_LQR - start_time_LQR) * 1000;
-    // std::cout << "LQR solve took: " << elapsed_time_LQR.count() << " ms" << std::endl;
-
-    // // if (std::fabs(t_msec_ - 9360.0) < 0.5){
-    // //     lqr.record_logs(t_msec_);
-    // // }
-   
-    // des_configuration_.com.pos(0) = sol_lqr.com.pos;  
-    // des_configuration_.com.vel(0) = sol_lqr.com.vel;
-    // des_configuration_.com.acc(0) = sol_lqr.com.acc; 
-
-    // des_configuration_.lwheel.pos.p(0) = sol_lqr.zmp.pos;
-    // des_configuration_.lwheel.pos.p(1) = left_contact(1);
-    // des_configuration_.lwheel.vel(0) = sol_lqr.zmp.vel;
-    // des_configuration_.lwheel.acc(0) = sol_lqr.zmp.acc;
-
-    // des_configuration_.rwheel.pos.p(0) = sol_lqr.zmp.pos;
-    // des_configuration_.rwheel.pos.p(1) = right_contact(1);
-    // des_configuration_.rwheel.vel(0) = sol_lqr.zmp.vel;
-    // des_configuration_.rwheel.acc(0) = sol_lqr.zmp.acc;
-
-
-    
-
     Eigen::MatrixXd J_left_wheel = Eigen::MatrixXd::Zero(6, robot_model_.nv);;
     pinocchio::getFrameJacobian(robot_model_, robot_data_, left_leg4_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_wheel);
     Eigen::Vector<double, 6> current_lwheel_vel = J_left_wheel * qdot;
@@ -218,42 +169,34 @@ void WalkingManager::update(
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
 
-    // jump routine
+    // ---------------- jump routine -------------------------
 
     // maximum height obstacle
     // if (std::fabs(t_msec_ - 2000.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.36);
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.31, 0.4);    // displacement com = 0.31; displacement leg = 0.4; 
     // }
 
     // high speed obstacle
     // if (std::fabs(t_msec_ - 4000.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.21);
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.21, 0.3);
     // }
-
-   
 
 
     // 3-obstacle
-    if (std::fabs(t_msec_ - 1200.0) < 0.5){
+    if (std::fabs(t_msec_ - 1230.0) < 0.5){
         walkingPlanner_.jumpRoutine(t_msec_, 0.15);
     }
 
-    if (std::fabs(t_msec_ - 2300.0) < 0.5){
+    if (std::fabs(t_msec_ - 2320.0) < 0.5){
         walkingPlanner_.jumpRoutine(t_msec_, 0.25);
     }
 
     if (std::fabs(t_msec_ - 3800.0) < 0.5){
         walkingPlanner_.jumpRoutine(t_msec_, 0.30);
     }
+    // --------------------------------------------------------
 
-    mpc_.t_msec = t_msec_;
-
-    // log mpc logs
-    if (static_cast<int>(t_msec_) % 10 == 0){
-        mpc_.record_logs = true;
-    }
-
-
+    
     // DFIP (DDP) - based MPC
     Eigen::VectorXd x_IN(18);
     x_IN.segment<3>(0) = p_CoM;
@@ -262,25 +205,14 @@ void WalkingManager::update(
     x_IN.segment<3>(9) = right_contact;
     x_IN.segment<3>(12) = curr_pl_vel;
     x_IN.segment<3>(15) = curr_pr_vel;
-
-    // for open loop compuation
-    // SolutionMPC sol = mpc_.get_solution();
-    // Eigen::VectorXd x_IN(18);
-    // x_IN.segment<3>(0) = sol.com.pos;
-    // x_IN.segment<3>(3) = sol.com.vel;
-    // x_IN.segment<3>(6) = sol.pl.pos;
-    // x_IN.segment<3>(9) = sol.pr.pos;
-    // x_IN.segment<3>(12) = sol.pl.vel;
-    // x_IN.segment<3>(15) = sol.pr.vel;
-
-
-
     
-    // auto t1 = std::chrono::system_clock::now();
+    mpc_.t_msec = t_msec_;
+
+    auto start_time_mpc = std::chrono::system_clock::now();
     mpc_.solve(x_IN);
-    // auto t2 = std::chrono::system_clock::now();
-    // auto delta_t = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-    // std::cout << "MPC took " << delta_t << " us" << std::endl;
+    auto end_time_mpc = std::chrono::system_clock::now();
+    auto time_mpc = std::chrono::duration_cast<std::chrono::microseconds>(end_time_mpc - start_time_mpc).count();
+    // std::cout << "MPC took " << time_mpc << " us" << std::endl;
 
     SolutionMPC sol = mpc_.get_solution();
     
@@ -288,15 +220,14 @@ void WalkingManager::update(
     des_configuration_.com.vel = sol.com.vel;
     des_configuration_.com.acc = sol.com.acc;
 
-    des_configuration_.lwheel.pos.p.segment<2>(0) = sol.pl.pos.segment<2>(0);
-    des_configuration_.lwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact (in the model of MPC which does not provide camber motion)
+    des_configuration_.lwheel.pos.p = l_wheel_center.translation() + sol.pl.vel * mpc_.get_nominal_dt();
     des_configuration_.lwheel.vel.segment<3>(0) = sol.pl.vel.segment<3>(0);
     des_configuration_.lwheel.acc.segment<3>(0) = sol.pl.acc.segment<3>(0);
 
-    des_configuration_.rwheel.pos.p.segment<2>(0) = sol.pr.pos.segment<2>(0);
-    des_configuration_.rwheel.pos.p(2) = sol.pl.pos(2) + wheel_radius_;             // z of the wheel center is distanciated of wheel radius from the contact 
+    des_configuration_.rwheel.pos.p = r_wheel_center.translation() + sol.pr.vel * mpc_.get_nominal_dt();
     des_configuration_.rwheel.vel.segment<3>(0) = sol.pr.vel.segment<3>(0);
     des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
+
 
     Eigen::Matrix3d R_theta = Eigen::Matrix3d::Zero();
     R_theta << cos(sol.theta), -sin(sol.theta), 0,
@@ -326,7 +257,7 @@ void WalkingManager::update(
         }
         
         case 1: {               // pre-jump phase                                        
-            auto params = WholeBodyControllerParams::getDefaultParams();        
+            auto params = WholeBodyControllerParams::getDefaultParams();  
             whole_body_controller_ptr_->params_ = params;       
             break;
         }  
@@ -352,7 +283,12 @@ void WalkingManager::update(
     }
 
 
+    auto start_time_wbc = std::chrono::system_clock::now();
     whole_body_controller_ptr_->compute_inverse_dynamics(robot_state, des_configuration_, joint_torque, joint_acceleration);
+
+    auto end_time_wbc = std::chrono::system_clock::now();
+    auto time_wbc = std::chrono::duration_cast<std::chrono::microseconds>(end_time_wbc - start_time_wbc).count();
+    // std::cout << "WBC took " << time_wbc << " us" << std::endl;
 
     // for reducing chattering
     int idx = 0;
@@ -361,11 +297,10 @@ void WalkingManager::update(
         des_configuration_.tau_prev(idx) = joint_torque[joint_name];
     }
     
-    
 
     auto end_time = std::chrono::system_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-    // std::cout << "WalkingManager::update() took " << elapsed_time << " us" << std::endl;
+    auto controller_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    // std::cout << "WalkingManager::update() took " << controller_time << " us" << std::endl;
     
     // std::cout << "t_msec_ " << t_msec_ << std::endl;
 
@@ -375,16 +310,61 @@ void WalkingManager::update(
     t_msec_ += controller_timestep_msec_;
 
 
-    // Log:
-    state_log_file_
-        << t_msec_ << ","
-        << p_CoM(0) << "," << p_CoM(1) << "," << p_CoM(2) << ","
-        << des_configuration_.com.pos(0) << "," << des_configuration_.com.pos(1) << "," << des_configuration_.com.pos(2) << ","
-        << l_wheel_center.translation()(0) << "," << l_wheel_center.translation()(1) << "," << l_wheel_center.translation()(2) << ","
-        << des_configuration_.lwheel.pos.p(0) << "," << des_configuration_.lwheel.pos.p(1) << "," << des_configuration_.lwheel.pos.p(2) << ","
-        << r_wheel_center.translation()(0) << "," << r_wheel_center.translation()(1) << "," << r_wheel_center.translation()(2) << ","
-        << des_configuration_.rwheel.pos.p(0) << "," << des_configuration_.rwheel.pos.p(1) << "," << des_configuration_.rwheel.pos.p(2)
-        << std::endl;
+    // log WBC data
+    labrob::WBCEntry wbc_entry;
+    wbc_entry.time_ms = t_msec_;
+
+    wbc_entry.com_x = p_CoM(0); 
+    wbc_entry.com_y = p_CoM(1); 
+    wbc_entry.com_z = p_CoM(2);
+
+    wbc_entry.com_x_des = des_configuration_.com.pos(0); 
+    wbc_entry.com_y_des = des_configuration_.com.pos(1); 
+    wbc_entry.com_z_des = des_configuration_.com.pos(2);
+
+    wbc_entry.wheel_l_x = l_wheel_center.translation()(0);
+    wbc_entry.wheel_l_y = l_wheel_center.translation()(1);
+    wbc_entry.wheel_l_z = l_wheel_center.translation()(2);
+
+    wbc_entry.wheel_l_x_des = des_configuration_.lwheel.pos.p(0);
+    wbc_entry.wheel_l_y_des = des_configuration_.lwheel.pos.p(1);
+    wbc_entry.wheel_l_z_des = des_configuration_.lwheel.pos.p(2);
+
+    wbc_entry.wheel_r_x = r_wheel_center.translation()(0);
+    wbc_entry.wheel_r_y = r_wheel_center.translation()(1);
+    wbc_entry.wheel_r_z = r_wheel_center.translation()(2);
+
+    wbc_entry.wheel_r_x_des = des_configuration_.rwheel.pos.p(0);
+    wbc_entry.wheel_r_y_des = des_configuration_.rwheel.pos.p(1);
+    wbc_entry.wheel_r_z_des = des_configuration_.rwheel.pos.p(2);
+
+    logger_.log_wbc_data(std::move(wbc_entry));
+
+    // log MPC data
+    if (static_cast<int>(t_msec_) % 10 == 0){       // save mpc predictions every 10 cycles
+        labrob::MPCEntry mpc_entry;
+        mpc_entry.time_ms = t_msec_;
+
+        mpc_entry.X = mpc_.X;
+        mpc_entry.U = mpc_.U;
+    
+        logger_.log_mpc_data(std::move(mpc_entry));
+    }
+
+    // log timings data
+    labrob::TimingEntry timing;
+
+    timing.time_mpc_us = time_mpc;
+    timing.time_wbc_us = time_wbc;
+    timing.total_time_us = controller_time;
+
+    logger_.log_timing_data(std::move(timing));
+
 }
+
+void WalkingManager::save_data(){
+    logger_.save_log_data();
+}
+
 
 } // end namespace labrob

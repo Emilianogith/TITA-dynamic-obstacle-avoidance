@@ -200,7 +200,7 @@ class walkingPlanner {
     }
   }
 
-  void jumpRoutine(const double& t_msec, const double h_jump){
+  void jumpRoutine(const double& t_msec, const double h_jump, const double h_leg = -1){
 
     double t0 = t_msec / 1000;
     int current_time_step = get_time_step_idx(t_msec);
@@ -255,7 +255,7 @@ class walkingPlanner {
 
 
     // leg trajectory
-    double h_leg_max = h_jump;            // or 0.4 for h_jump = 3.1 (max-height jump)
+    double h_leg_max = (h_leg > 0.0)? h_leg : h_jump;            // or 0.4 for h_jump = 0.31 (max-height jump)
     double e_contact = z0_contact;
     double d_contact = 0.0;
     double c_contact = 16 * (h_leg_max - z0_contact);

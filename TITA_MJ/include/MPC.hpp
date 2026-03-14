@@ -57,8 +57,13 @@ class MPC {
 
   void solve(Eigen::Vector<double, N_IN> x0);
 
-  bool record_logs = false;
+  double get_nominal_dt() {return dt_;}
+
   double t_msec = 0.0;
+
+  // used for logging... find a better way
+  Eigen::MatrixXd X;
+  Eigen::MatrixXd U;
   
 
 private:
@@ -80,6 +85,7 @@ private:
   // initial guess trajectory
   std::vector<Eigen::VectorXd> xs;
   std::vector<Eigen::VectorXd> us;
+
 
   // FDDP solver
   std::shared_ptr<SolverFDDP> solver;

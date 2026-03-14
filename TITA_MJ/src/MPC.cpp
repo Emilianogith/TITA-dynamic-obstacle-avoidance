@@ -86,6 +86,10 @@ void labrob::MPC::init_solver(Eigen::Vector<double, N_IN> x_IN){
     us[i].segment<3>(3) = fl0;
     us[i].segment<3>(6) = fr0;
   }
+
+  // resize log metrices
+  X.resize(NH, NX);
+  U.resize(NH - 1, NU);
 }
 
 void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
@@ -114,13 +118,20 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   auto x_traj = solver->get_xs();
   auto u_traj = solver->get_us();
 
+
   // Shift by one guess trajectory
   for (unsigned int i = 0; i < NH; ++i)
+  {
       xs[i] = x_traj[i + 1];  
+      X.row(i) = x_traj[i].transpose();    // save for logging
+  }
   xs[NH] = x_traj[NH]; 
 
   for (unsigned int i = 0; i < NH - 1; ++i)
+  {
       us[i] = u_traj[i + 1];
+      U.row(i) = u_traj[i].transpose();    // save for logging
+  }
   us[NH - 1] = u_traj[NH- 1]; 
 
 
@@ -181,34 +192,6 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   alpha_   = alpha;
   omega_   = w_curr + dt_ * alpha_;
   theta_   = theta_curr +  dt_ * w_curr;
-
-
-
-
-
-  if(record_logs){
-    // create folder if it does not exist
-    std::string folder = "/tmp/mpc_data/" + std::to_string(t_msec);
-    std::string command = "mkdir -p " + folder;
-    const int ret = std::system(command.c_str());
-    (void)ret;
-
-    // print trajectory to file
-    std::string path_x = "/tmp/mpc_data/" + std::to_string(t_msec) + "/x.txt";
-    std::ofstream file_x(path_x);
-    for (int i = 0; i < NH+1; ++i) {
-      file_x << x_traj[i].transpose() << std::endl;
-    }
-    file_x.close();
-    std::string path_u = "/tmp/mpc_data/" + std::to_string(t_msec) + "/u.txt";
-    std::ofstream file_u(path_u);
-    for (int i = 0; i < NH; ++i) {
-      file_u << u_traj[i].transpose() << std::endl;
-    }
-    file_u.close();
-
-    record_logs = false;
-  }
    
 }
 

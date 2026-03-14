@@ -6,6 +6,7 @@
 // #include <LQR.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
+#include <Logger.hpp>
 
 
 namespace labrob {
@@ -21,8 +22,10 @@ class WalkingManager {
       labrob::JointCommand& joint_acceleration
   );
 
+  void save_data();
+  
   labrob::DesiredConfiguration des_configuration_;
-
+  
 
  protected:
   pinocchio::Model robot_model_;
@@ -47,9 +50,8 @@ private:
   labrob::MPC mpc_;
 
 
-  // Log files:
-  // std::ofstream mpc_timings_log_file_;
-  std::ofstream state_log_file_;
+  // Logger:
+  labrob::Logger logger_;
 
 }; 
 

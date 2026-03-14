@@ -89,7 +89,7 @@ void print_contacts(const mjModel* m, const mjData* d) {
 void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep_counter){
   double point[3]{0.0, 0.0, 0.0};
 
-  double force[3] {100.0, -50.0, 100.0}; // {100.0, -50.0, 100.0}; {-200.0, -160.0, -300.0};
+  double force[3] {110.0, -50.0, 110.0}; // {110.0, -50.0, 110.0}; {-200.0, -160.0, -300.0};
   double torque[3]{0.0, 0.0, 0.0};
 
   int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "base_link");
@@ -278,6 +278,9 @@ int main() {
     
     joint_vel_log_file << std::endl;
     joint_eff_log_file << std::endl;
+
+    if (timestep_counter == 10000)
+      walking_manager.save_data();
     
     }
 
@@ -288,7 +291,8 @@ int main() {
 
   // Stampa del tempo di esecuzione
   // std::cout << "Controller period: " << duration << " us" << std::endl;
-  
+
+
   
   // double sim_elapsed = end_sim - simstart;
   // double real_elapsed = std::chrono::duration<double>(end_time - start_time).count();
@@ -299,6 +303,8 @@ int main() {
 
   mujoco_ui.render();
   }
+
+  walking_manager.save_data();
 
   // Free memory (Mujoco):
   mj_deleteData(mj_data_ptr);

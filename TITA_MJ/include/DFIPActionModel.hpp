@@ -32,15 +32,15 @@ public:
         d_off_(d_off),
         m_(m)
   {
-    // default weights
-    w_pcomxy_k_ = 1000.0;  
-    w_pcomz_k_  = 1000.0;
-    w_vcomxy_k_ = 10.0; 
-    w_vcomz_k_  = 50.0;
-    w_c_k_      = 0.0; 
-    w_v_k_      = 0.0;
-    w_vcz_k_    = 0.0;
-
+    // default weights                      
+    w_pcomxy_k_ = 100.0;                    
+    w_pcomz_k_  = 1000.0;  
+    w_vcomxy_k_ = 30.0;   
+    w_vcomz_k_  = 90.0;  
+    w_c_k_      = 1000.0;
+    w_v_k_      = 10.0; 
+    w_vcz_k_    = 0.0;  
+                                      
     w_theta_k_  = 100.0;
     w_w_k_      = 5.0;
 
@@ -77,16 +77,16 @@ public:
     if (x_ref(13) == 3) {
       jump_state = true;  // check if planned state is jump_state = 3 :: flight phase
 
-      w_pcomxy_k_ = 10.0;
+      w_pcomxy_k_ = 1000.0;
       w_pcomz_k_  = 1000.0;
       w_vcomxy_k_ = 10.0;
       w_vcomz_k_  = 100.0;
       w_c_k_      = 0.0; 
-      w_v_k_      = 100.0;
+      w_v_k_      = 0.0;
       w_vcz_k_    = 10.0;
               
-      w_theta_k_  = 0.0;
-      w_w_k_      = 0.0;
+      w_theta_k_  = 100.0;
+      w_w_k_      = 5.0;
 
       w_a_k_      = 1e-6;
       w_acz_k_    = 0.000001;
@@ -96,18 +96,16 @@ public:
       w_fcxy_k_   = 1e-6;
       w_fcz_k_    = 1e-6;
 
-      // w_eq_k_     = 0.0;
-
     } else if (jump_state){
       jump_state = false;
 
       // default weights
-      w_pcomxy_k_ = 1000.0;
+      w_pcomxy_k_ = 0.0;
       w_pcomz_k_  = 1000.0;
-      w_vcomxy_k_ = 10.0;
-      w_vcomz_k_  = 50.0;
-      w_c_k_      = 0.0; 
-      w_v_k_      = 0.0;
+      w_vcomxy_k_ = 30.0;
+      w_vcomz_k_  = 90.0;
+      w_c_k_      = 1000.0; 
+      w_v_k_      = 10.0;
       w_vcz_k_    = 0.0;
 
       w_theta_k_  = 100.0;
