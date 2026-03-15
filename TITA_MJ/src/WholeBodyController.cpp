@@ -355,7 +355,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd d_max_force_one = Eigen::VectorXd::Zero(4 * n_contacts_);
 
   Eigen::MatrixXd H_tau = params_.weight_tau_reg * Eigen::MatrixXd::Identity(n_joints_, n_joints_);
-  Eigen::VectorXd f_tau = -2 * params_.weight_tau_reg * desired.tau_prev;
+  Eigen::VectorXd f_tau = -params_.weight_tau_reg * desired.tau_prev;
 
   Eigen::MatrixXd H = Eigen::MatrixXd::Zero(H_acc.rows() + 2 * H_force_one.rows() + H_tau.rows(), H_acc.cols() + 2 * H_force_one.cols() + H_tau.cols());
   H.block(0, 0, H_acc.rows(), H_acc.cols()) = H_acc;

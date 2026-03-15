@@ -35,7 +35,7 @@ plt.axhline(avg_mpc, linestyle="--", label=f"MPC avg = {avg_mpc:.1f} us")
 plt.axhline(avg_wbc, linestyle="--", label=f"WBC avg = {avg_wbc:.1f} us")
 plt.axhline(avg_total, linestyle="--", label=f"Total avg = {avg_total:.1f} us")
 
-plt.xlabel("Iteration")
+plt.xlabel("Control cycle")
 plt.ylabel("Time (µs)")
 plt.title("Controller Timing")
 plt.legend()

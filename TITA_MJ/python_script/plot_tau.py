@@ -18,7 +18,7 @@ def plot_joint_data(path, ylabel, title):
     for j in range(n_joints):
         plt.plot(time, data[:, j], label=f"Joint {j+1}")
 
-    plt.xlabel("Time step")
+    plt.xlabel("Control cycle")
     plt.ylabel(ylabel)
     plt.title(title)
     plt.legend(loc="best")

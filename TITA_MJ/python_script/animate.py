@@ -165,14 +165,14 @@ ax_frz = fig.add_subplot(gs[2, 1])
 (pred_x,)     = ax_x.plot([], [], lw=2,   label="CoM x (pred)",  color="red")
 (pred_pc_x,)  = ax_x.plot([], [], lw=1.5, linestyle="--", label="Pc x (pred)", color="red")
 (pt_x,)       = ax_x.plot([], [], marker='o', linestyle='', color="tab:green")
-ax_x.set_ylabel("x"); ax_x.grid(True); ax_x.legend()
+ax_x.set_ylabel("x[m]"); ax_x.grid(True); ax_x.legend()
 
 (line_pc_y,)  = ax_y.plot([], [], lw=1.5, label="Pc y (hist)", color="tab:orange")
 (line_y,)     = ax_y.plot([], [], lw=2,   label="CoM y (hist)", color="tab:blue")
 (pred_y,)     = ax_y.plot([], [], lw=2,   label="CoM y (pred)",  color="red")
 (pred_pc_y,)  = ax_y.plot([], [], lw=1.5, linestyle="--", label="Pc y (pred)", color="red")
 (pt_y,)       = ax_y.plot([], [], marker='o', linestyle='', color="tab:green")
-ax_y.set_ylabel("y"); ax_y.grid(True); ax_y.legend()
+ax_y.set_ylabel("y[m]"); ax_y.grid(True); ax_y.legend()
 
 # --- z: add Pc z hist + pred (your request) ---
 (line_pc_z,)  = ax_z.plot([], [], lw=1.5, label="Pc z (hist)", color="tab:orange")
@@ -180,23 +180,23 @@ ax_y.set_ylabel("y"); ax_y.grid(True); ax_y.legend()
 (pred_z,)     = ax_z.plot([], [], lw=2,   label="CoM z (pred)",  color="red")
 (pred_pc_z,)  = ax_z.plot([], [], lw=1.5, linestyle="--", label="Pc z (pred)", color="red")
 (pt_z,)       = ax_z.plot([], [], marker='o', linestyle='', color="tab:green")
-ax_z.set_ylabel("z"); ax_z.set_xlabel("t [ms]"); ax_z.grid(True); ax_z.legend()
+ax_z.set_ylabel("z[m]"); ax_z.set_xlabel("t [ms]"); ax_z.grid(True); ax_z.legend()
 
 # ---- Inputs ----
 (line_ax,)     = ax_ax.plot([], [], lw=2, label="a (applied hist)")
-(pred_ax,)     = ax_ax.plot([], [], lw=2, label="a (pred u0..uH)", color="red")
+(pred_ax,)     = ax_ax.plot([], [], lw=2, label="a (pred u0..uH-1)", color="red")
 (pt_ax,)       = ax_ax.plot([], [], marker='o', linestyle='')
-ax_ax.set_ylabel("a"); ax_ax.grid(True); ax_ax.legend()
+ax_ax.set_ylabel("a[m/s^2]"); ax_ax.grid(True); ax_ax.legend()
 
 (line_flz,)    = ax_flz.plot([], [], lw=2, label="flz (applied hist)")
-(pred_flz_ln,) = ax_flz.plot([], [], lw=2, label="flz (pred u0..uH)", color="red")
+(pred_flz_ln,) = ax_flz.plot([], [], lw=2, label="flz (pred u0..uH-1)", color="red")
 (pt_flz,)      = ax_flz.plot([], [], marker='o', linestyle='')
-ax_flz.set_ylabel("flz"); ax_flz.grid(True); ax_flz.legend()
+ax_flz.set_ylabel("flz[N]"); ax_flz.grid(True); ax_flz.legend()
 
 (line_frz,)    = ax_frz.plot([], [], lw=2, label="frz (applied hist)")
-(pred_frz_ln,) = ax_frz.plot([], [], lw=2, label="frz (pred u0..uH)", color="red")
+(pred_frz_ln,) = ax_frz.plot([], [], lw=2, label="frz (pred u0..uH-1)", color="red")
 (pt_frz,)      = ax_frz.plot([], [], marker='o', linestyle='')
-ax_frz.set_ylabel("frz"); ax_frz.set_xlabel("t [ms]"); ax_frz.grid(True); ax_frz.legend()
+ax_frz.set_ylabel("frz[N]"); ax_frz.set_xlabel("t [ms]"); ax_frz.grid(True); ax_frz.legend()
 
 def set_limits(ax, t_hist, *value_lists):
     # time axis
