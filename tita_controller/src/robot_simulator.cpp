@@ -63,14 +63,16 @@ public:
             std::bind(&RobotSimulatort::publish_joint_state, this));
 
 
+        std::string prefix = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/src/robot_data_fermo/";
+
         // Load IMU data from file
-        if (!load_imu_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_fermo/imu_log.txt")) {
+        if (!load_imu_data(prefix + "imu_log.txt")) {
             RCLCPP_ERROR(this->get_logger(), "Failed to load imu.txt");
         }
         imu_index_ = 0;
 
         // Load joint data from file
-        if (!load_joint_data("/home/emiliano/Desktop/ros2_ws/src/robot_data_fermo/joint_state_log.txt")) {
+        if (!load_joint_data(prefix + "joint_state_log.txt")) {
             RCLCPP_ERROR(this->get_logger(), "Failed to load joint_state.txt");
         }
         joint_index_ = 0;

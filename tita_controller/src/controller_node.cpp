@@ -18,8 +18,9 @@
 #include <Eigen/Geometry>
 
 #include <StateFilter_no_bias.hpp>
-#include <RobotOdometry.hpp>
-#include <WalkingManager.hpp>
+#include <Wheel_KF.hpp>
+#include <RobotOdometry.hpp>             // change for angular velocity odometry
+#include <WalkingManager.hpp>   
 
 
 
@@ -44,18 +45,10 @@ struct RobotSensors{
         double vel = 0.0;
     };
 
-    struct WheelState{
-        double pos_prev = 0.0;
-        rclcpp::Time t_prev{0, 0, RCL_ROS_TIME};
-        double alpha = 1.0;                         // low-pass filter parameter
-    };
-
     std::unordered_map<std::string, JointState> joints;
 
     ImuSensor imu;
     Odom odom;
-    WheelState wheel_left;
-    WheelState wheel_right;
 };
 
 
@@ -147,19 +140,18 @@ public:
 
         state_filter_ptr_ = std::make_shared<labrob::KF>(robot_model_);        
         robot_odometry_ptr_ = std::make_shared<labrob::RobotOdometry>(robot_model_);
-
+        // wheel_filter_ptr_ = std::make_shared<labrob::wheel_KF>();   
 
 
         // Logging
         std::string prefix = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/robot_logs/";
-
-        // Create directory if it doesn't exist
         std::filesystem::create_directories(prefix);
 
         // ---------- KF log ----------
         csv.open(prefix + "kf_test.csv");
         csv << "t,"
             << "p_odom_x,p_odom_y,p_odom_z,"
+            << "qx,qy,qz,qw,"
             << "p_est_x,p_est_y,p_est_z,"
             << "v_est_x,v_est_y,v_est_z,"
             << "p_cL_est_x,p_cL_est_y,p_cL_est_z,"
@@ -170,13 +162,14 @@ public:
         robot_odom_log << "t,"
             << "p_odom_x,p_odom_y,p_odom_z,"
             << "v_odom_x,v_odom_y,v_odom_z,"
-            << "p_cL_odom_x,p_cL_odom_y,p_cL_odom_z,"
+            // << "omega_odom_x,omega_odom_y,omega_odom_z,"            // comment for angular velocity odometry
+            << "p_cL_odom_x,p_cL_odom_y,p_cL_odom_z,"   
             << "p_cR_odom_x,p_cR_odom_y,p_cR_odom_z,"
             << "w_l_odom,w_r_odom\n";
 
         // ---------- Wheel log ----------
-        wheel_log_.open(prefix + "wheel_log.txt");
-        wheel_log_ << "Timestamp, Joint Name, Position, Velocity, Velocity Difference\n";
+        // wheel_log_.open(prefix + "wheel_log.txt");
+        // wheel_log_ << "Timestamp, Joint Name, Position, Velocity, Velocity Difference, filter position, filter velocity\n";
 
         // ---------- Other logs ----------
         odom_log_.open(prefix + "odom.txt");
@@ -184,7 +177,42 @@ public:
         joint_state_log_.open(prefix + "joint_state_log.txt");
 
         // ---------- Joint effort log ----------
-        joint_eff_log_file_.open(prefix + "joint_eff.txt");
+        joint_eff_log_file_.open("/tmp/joint_eff.txt");
+        
+        tau_commanded.open("/tmp/tau_commanded.txt");
+
+
+
+        // ---------------- GAINS FROM YAML ----------------
+
+        // declare default values (used if yaml is missing)
+        this->declare_parameter<std::vector<double>>(
+            "kp",
+            std::vector<double>(8, 0.0));
+
+        this->declare_parameter<std::vector<double>>(
+            "kd",
+            std::vector<double>(8, 0.0));
+
+        // read values from yaml
+        KP_gains_ = this->get_parameter("kp").as_double_array();
+
+        KD_gains_ = this->get_parameter("kd").as_double_array();
+
+        // safety check
+        if (KP_gains_.size() != 8 ||
+            KD_gains_.size() != 8)
+        {
+            RCLCPP_ERROR(this->get_logger(),
+                "kp and kd must have size 8");
+
+            KP_gains_ = std::vector<double>(8, 0.0);
+            KD_gains_ = std::vector<double>(8, 0.0);
+        }
+
+        RCLCPP_INFO(this->get_logger(),
+            "Controller gains loaded from YAML");
+
     }
 
 
@@ -269,8 +297,12 @@ private:
 
                 double effort = i < msg->effort.size() ? msg->effort[i] : 0.0;
 
+                rclcpp::Time now = this->get_clock()->now();
+                double time_sec = now.seconds();
+
                 // logs the joint values
                 joint_state_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
+                << time_sec << " "
                 << msg->name[i] << ":  pos: "
                 << joint.pos << " vel: "
                 << joint.vel << " effort: "
@@ -279,58 +311,46 @@ private:
 
         joint_state_log_ << "----------------------------------------" << std::endl;
 
+
+        // ----- filter noisy wheels encoder data ------
+        // double q_wL_meas = robot_sensor_.joints["joint_left_leg_4"].pos;
+        // double q_wR_meas = robot_sensor_.joints["joint_right_leg_4"].pos;
+
+        // if (!received_joint_state_)  
+        // {
+        //     wheel_filter_ptr_->set_initial_condition(q_wL_meas, q_wR_meas);
+        //     t_prev_joint_msg_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        // }
+      
+        // rclcpp::Time t = msg->header.stamp;
+        // double Ts = (t - t_prev_joint_msg_).seconds();            // check at which frequency publishes /tita4267305/joint_states!!!!!!!
+        // Eigen::Vector<double, 4> wheels_state = wheel_filter_ptr_->compute_KF_estimate(Ts, q_wL_meas, q_wR_meas);
+        // t_prev_joint_msg_ = t;
+        // ---------------------------------------------
+
         // fill joint state
         for(pinocchio::JointIndex joint_id = 2; static_cast<int>(joint_id) < robot_model_.njoints; ++joint_id){
             const std::string& name = robot_model_.names[joint_id];                                 // get joint name from Pinocchio
             robot_state_.joint_state[name].pos = robot_sensor_.joints[name].pos; 
             robot_state_.joint_state[name].vel = robot_sensor_.joints[name].vel; 
 
+
+
             // special handling for wheel joints to apply low-pass filter and log
-            if (name == "joint_left_leg_4"){
+            // if (name == "joint_left_leg_4"){ 
 
-                double alpha = robot_sensor_.wheel_left.alpha;
-                double pos_prev = robot_sensor_.wheel_left.pos_prev;
-
-                double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
-
-                rclcpp::Time t = msg->header.stamp;
-                double dt = (t - robot_sensor_.wheel_left.t_prev).seconds();  
-
-                wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-                << name << 
-                ":  pos: " << robot_state_.joint_state[name].pos <<
-                ":  filtered pos: " << filtered_pos <<
-                " vel: " << robot_state_.joint_state[name].vel  <<
-                " vel_diff: " << (filtered_pos - robot_sensor_.wheel_left.pos_prev) / dt  << std::endl;
-
-                robot_sensor_.wheel_left.pos_prev = filtered_pos;
-                robot_sensor_.wheel_left.t_prev = t;
-            }
-            else if (name == "joint_right_leg_4"){
+            //     robot_state_.joint_state[name].pos = wheels_state(0); 
+            //     robot_state_.joint_state[name].vel = wheels_state(1);
+            // }
+            // else if (name == "joint_right_leg_4"){
                 
-                double alpha = robot_sensor_.wheel_right.alpha;
-                double pos_prev = robot_sensor_.wheel_right.pos_prev;
-
-                double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
-
-                rclcpp::Time t = msg->header.stamp;
-                double dt = (t - robot_sensor_.wheel_right.t_prev).seconds();  
-                
-                wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-                << name << 
-                ":  pos: " << robot_state_.joint_state[name].pos <<
-                ":  filtered pos: " << filtered_pos <<
-                " vel: " << robot_state_.joint_state[name].vel  <<
-                " vel_diff: " << (filtered_pos - robot_sensor_.wheel_right.pos_prev) / dt  << std::endl;
-                
-                robot_sensor_.wheel_right.pos_prev = filtered_pos;
-                robot_sensor_.wheel_right.t_prev = t;
-            }
-
+            //     robot_state_.joint_state[name].pos = wheels_state(2); 
+            //     robot_state_.joint_state[name].vel = wheels_state(3);
+            // }
         }
 
         // needed to ensure joint states are received at least once before starting the controller
-        if (!received_joint_state_) received_joint_state_ = true;
+        if (!received_joint_state_)  received_joint_state_ = true;
     }
 
     void publish_filtered_state()
@@ -354,13 +374,13 @@ private:
 
         for(pinocchio::JointIndex joint_id = 2; static_cast<int>(joint_id) < robot_model_.njoints; ++joint_id){
             const std::string& name = robot_model_.names[joint_id];                                         // get joint name from Pinocchio
-            filter_params(4 + joint_id - 2) = robot_sensor_.joints[name].pos;                               // Joint positions
-            filter_input(6 + joint_id - 2) = robot_sensor_.joints[name].vel;                                // Joint velocities
+            filter_params(4 + joint_id - 2) = robot_state_.joint_state[name].pos;                           // Joint positions
+            filter_input(6 + joint_id - 2) = robot_state_.joint_state[name].vel;                            // Joint velocities
         }
 
         // Manual calibration: add some offset to wheel velocity measurements to compensate for the bias
-        filter_input(6+3) += 0.005;
-        filter_input(6+7) -= 0.005;
+        // filter_input(6+3) += 0.005;
+        // filter_input(6+7) -= 0.005;
         // -------------------------------------------
         
 
@@ -383,12 +403,18 @@ private:
         bool in_contact = true;
         Eigen::Vector<double,12> filtered_state = state_filter_ptr_->compute_KF_estimate(filter_input, filter_params, dt, in_contact);
 
-        
+
+        // log orienation
+        Eigen::Quaterniond orientation;
+        orientation.coeffs() = robot_sensor_.imu.orientation.coeffs();
+
+
         // ---- Log ---------------------
         double t_rel = (t_now - start_time_filter_).seconds();                                               // Compute relative time
         csv << std::fixed << std::setprecision(9);
         csv << t_rel << ","
             << robot_sensor_.odom.position(0) << "," << robot_sensor_.odom.position(1) << "," << robot_sensor_.odom.position(2) << ","
+            << orientation.x() << "," << orientation.y() << "," << orientation.z() << "," << orientation.w() << ","
             << filtered_state(0) << "," << filtered_state(1) << "," << filtered_state(2) << ","
             << filtered_state(3) << "," << filtered_state(4) << "," << filtered_state(5) << ","
             << filtered_state(6) << "," << filtered_state(7) << "," << filtered_state(8) << ","
@@ -403,19 +429,45 @@ private:
 
 
         // --------- Compute odometry ---------
-        labrob::Odom robot_odom = robot_odometry_ptr_->forward_step(filter_params.segment<8>(4), 
-        filter_input.segment<8>(6), 
-        robot_sensor_.imu.orientation,
-        filter_input.segment<3>(3),
-        dt);
+        // labrob::Odom robot_odom = robot_odometry_ptr_->forward_step(filter_params.segment<8>(4), 
+        // filter_input.segment<8>(6), 
+        // robot_sensor_.imu.orientation,
+        // filter_input.segment<3>(3),                                                                    // comment for angular velocity odometry
+        // dt);
 
-        robot_odom_log << std::fixed << std::setprecision(9);
-        robot_odom_log << t_rel << ","
-            << robot_odom.position(0) << "," << robot_odom.position(1) << "," << robot_odom.position(2) << ","
-            << robot_odom.velocity(0) << "," << robot_odom.velocity(1) << "," << robot_odom.velocity(2) << ","
-            << robot_odom.pc_l(0) << "," << robot_odom.pc_l(1) << "," << robot_odom.pc_l(2) << ","
-            << robot_odom.pc_r(0) << "," << robot_odom.pc_r(1) << "," << robot_odom.pc_r(2) << ","
-            << robot_odom.w_l << "," << robot_odom.w_r << "\n";
+
+        // Eigen::Matrix3d R_base = robot_state_.orientation.toRotationMatrix();
+        // Eigen::Vector3d v_fb_world    = R_base * robot_odom.velocity;
+        // // Eigen::Vector3d omega_fb_base = robot_odom.angular_velocity;                                 // comment for angular velocity odometry
+
+
+        // robot_odom_log << std::fixed << std::setprecision(9);
+        // robot_odom_log << t_rel << ","
+        //     << robot_odom.position(0) << "," << robot_odom.position(1) << "," << robot_odom.position(2) << ","
+        //     << v_fb_world(0) << "," << v_fb_world(1) << "," << v_fb_world(2) << ","
+        //     // << omega_fb_base(0) << "," << omega_fb_base(1) << "," << omega_fb_base(2) << ","         // comment for angular velocity odometry            
+        //     << robot_odom.pc_l(0) << "," << robot_odom.pc_l(1) << "," << robot_odom.pc_l(2) << ","
+        //     << robot_odom.pc_r(0) << "," << robot_odom.pc_r(1) << "," << robot_odom.pc_r(2) << ","
+        //     << robot_odom.w_l << "," << robot_odom.w_r << "\n";
+
+
+
+        // bool use_filter = true;
+        // // ------ fill robot state -------
+        // if(use_filter)
+        // {
+        //     robot_state_.position = filtered_state.segment<3>(0);
+        //     robot_state_.orientation.coeffs() = filter_params.segment<4>(0);
+        //     robot_state_.linear_velocity = robot_state_.orientation.toRotationMatrix().transpose() * filtered_state.segment<3>(3);
+        //     robot_state_.angular_velocity = filter_input.segment<3>(3);
+        // } else
+        // {
+        //     robot_state_.position = robot_odom.position;
+        //     robot_state_.orientation.coeffs() = filter_params.segment<4>(0);
+        //     robot_state_.linear_velocity =  robot_state_.orientation.toRotationMatrix().transpose() * robot_odom.velocity;
+        //     robot_state_.angular_velocity = filter_input.segment<3>(3);
+        // }
+
 
 
         // --------- Publish filtered state ---------
@@ -434,11 +486,11 @@ private:
         msg.pose.pose.orientation.z = robot_state_.orientation.z();
         msg.pose.pose.orientation.w = robot_state_.orientation.w();
 
-        msg.twist.twist.linear.x = robot_state_.linear_velocity.x();
+        msg.twist.twist.linear.x = robot_state_.linear_velocity.x();            // in body frame
         msg.twist.twist.linear.y = robot_state_.linear_velocity.y();
         msg.twist.twist.linear.z = robot_state_.linear_velocity.z();
 
-        msg.twist.twist.angular.x = robot_state_.angular_velocity.x();
+        msg.twist.twist.angular.x = robot_state_.angular_velocity.x();          // in body frame
         msg.twist.twist.angular.y = robot_state_.angular_velocity.y();
         msg.twist.twist.angular.z = robot_state_.angular_velocity.z();
         filtered_state_pub_->publish(msg);
@@ -524,7 +576,6 @@ private:
         std_msgs::msg::Float64MultiArray effort_msg;
 
         effort_msg.data.resize(na, 0.0);
-
         effort_cmd_pub_->publish(effort_msg);
     }
 
@@ -539,20 +590,27 @@ private:
         initialized_walking_manager_ = true;
     }
 
-    void regulate_robot(std::array<double, 8> KP,
-        std::array<double, 8> KD,
-        std_msgs::msg::Float64MultiArray& effort_msg){
+    void regulate_robot(std_msgs::msg::Float64MultiArray& effort_msg){
         /*Joint-level PD regulation towards a nominal configuration,
          used for testing the controller and for safety when the robot is lifted off the ground*/
 
         std::array<double, 8> q_des;
+        // q_des[0] = 0.0;                 // joint_left_leg_1
+        // q_des[1] = 0.5;                 // joint_left_leg_2
+        // q_des[2] = -1.0;                // joint_left_leg_3
+        // q_des[3] = 0.1;                 // joint_left_leg_4
+        // q_des[4] = 0.0;                 // joint_right_leg_1
+        // q_des[5] = 0.5;                 // joint_right_leg_2
+        // q_des[6] = -1.0;                // joint_right_leg_3
+        // q_des[7] = 0.1;                 // joint_right_leg_4
+
         q_des[0] = 0.0;                 // joint_left_leg_1
-        q_des[1] = 0.5;                 // joint_left_leg_2
-        q_des[2] = -1.0;                // joint_left_leg_3
+        q_des[1] = 0.8;                 // joint_left_leg_2
+        q_des[2] = -2.0;                // joint_left_leg_3
         q_des[3] = 0.1;                 // joint_left_leg_4
         q_des[4] = 0.0;                 // joint_right_leg_1
-        q_des[5] = 0.5;                 // joint_right_leg_2
-        q_des[6] = -1.0;                // joint_right_leg_3
+        q_des[5] = 0.8;                 // joint_right_leg_2
+        q_des[6] = -2.0;                // joint_right_leg_3
         q_des[7] = 0.1;                 // joint_right_leg_4
 
         std::array<double, 8> qdot_des;
@@ -564,7 +622,7 @@ private:
         qdot_des[5] = 0.0;              // joint_right_leg_2
         qdot_des[6] = 0.0;              // joint_right_leg_3
         qdot_des[7] = 0.0;              // joint_right_leg_4
-
+        
         size_t idx = 0;
         for (pinocchio::JointIndex j = 2; static_cast<int>(j) < robot_model_.njoints; ++j, ++idx) {
             const auto& name = robot_model_.names[j];
@@ -572,15 +630,58 @@ private:
             const auto& js_curr = robot_state_.joint_state[name];      
             const double vel_curr = js_curr.vel;
             const double pos_curr = js_curr.pos;
-            effort_msg.data[idx] = KP[idx] * labrob::angleError(q_des[idx], pos_curr) + KD[idx] * (qdot_des[idx] - vel_curr);
+            effort_msg.data[idx] = KP_gains_[idx] * labrob::angleError(q_des[idx], pos_curr) + KD_gains_[idx] * (qdot_des[idx] - vel_curr);
+
+            // double tau = KP_gains_[idx] * labrob::angleError(q_des[idx], pos_curr) + KD_gains_[idx] * (qdot_des[idx] - vel_curr);
+            // tau = std::clamp(tau, -5.0, 5.0);
+            // effort_msg.data[idx] = tau;
         }
+
+
+        // const rclcpp::Time t_now = this->now();
+        // const double t_msec = (t_now - t_for_tau_prova).seconds() * 1000;
+
+        // if (t_msec < 100){
+        //     effort_msg.data[0] = 0.0;
+        //     effort_msg.data[1] = 0.0;
+        //     effort_msg.data[2] = 0.0;
+        //     effort_msg.data[3] = 0.0;
+
+        //     effort_msg.data[4] = 0.0;
+        //     effort_msg.data[5] = 0.0;
+        //     effort_msg.data[6] = 0.0;
+        //     effort_msg.data[7] = 5.0;
+        // // }
+        // // else if (t_msec < 1000){
+        // //     effort_msg.data[0] = 0.0;
+        // //     effort_msg.data[1] = 0.0;
+        // //     effort_msg.data[2] = 0.0;
+        // //     effort_msg.data[3] = 0.0;
+
+        // //     effort_msg.data[4] = 0.0;
+        // //     effort_msg.data[5] = 0.0;
+        // //     effort_msg.data[6] = 0.0;
+        // //     effort_msg.data[7] = -0.5;
+        
+        // } else {
+        //     effort_msg.data[0] = 0.0;
+        //     effort_msg.data[1] = 0.0;
+        //     effort_msg.data[2] = 0.0;
+        //     effort_msg.data[3] = 0.0;
+
+        //     effort_msg.data[4] = 0.0;
+        //     effort_msg.data[5] = 0.0;
+        //     effort_msg.data[6] = 0.0;
+        //     effort_msg.data[7] = 0.0;
+        // }
+
+
+
     }
 
     bool fillMsgs(
         const labrob::JointCommand& tau,
         const labrob::JointCommand& qdd,
-        std::array<double, 8> KP,
-        std::array<double, 8> KD,
         std_msgs::msg::Float64MultiArray& effort_msg)
     {
 
@@ -616,9 +717,9 @@ private:
             }
 
             // -------------- fill the message with FF + PD low-level control law ---------------
-            effort_msg.data[idx] = u + KP[idx] * labrob::angleError(pos_des, js.pos) + KD[idx] * (vel_des - js.vel);
+            effort_msg.data[idx] = u + KP_gains_[idx] * labrob::angleError(pos_des, js.pos) + KD_gains_[idx] * (vel_des - js.vel);
     
-            // effort_msg.data[idx] = KP[idx] * labrob::angleError(pos_des, js.pos) + KD[idx] * (vel_des - js.vel);
+            // effort_msg.data[idx] = KP_gains_[idx] * labrob::angleError(pos_des, js.pos) + KD_gains_[idx] * (vel_des - js.vel);
         }
         return true;
     }
@@ -630,6 +731,13 @@ private:
         if (security_stop_){
             RCLCPP_WARN(this->get_logger(), "Security stop activated! Sending zero commands.");
             sendZeroCommand();
+
+            // save logs (if any)
+            if (initialized_walking_manager_) 
+            {
+                walking_manager_.save_data();
+                initialized_walking_manager_ = !initialized_walking_manager_;
+            }
             return;
         }
 
@@ -639,34 +747,59 @@ private:
         std_msgs::msg::Float64MultiArray effort_msg;
         effort_msg.data.resize(na, 0.0);
 
-        // low-level gains
-        std::array<double, 8> KP = {                                            // std::array<double, 8> KP = {
-                10.0, 10.0, 10.0,  0.8,                                         //         40.0, 40.0, 40.0,  0.8,
-                10.0, 10.0, 10.0,  0.8                                          //         40.0, 40.0, 40.0,  0.8
-            };                                                                  //     };
-                                            
-        std::array<double, 8> KD = {                                            // std::array<double, 8> KD = {
-                0.2, 0.2, 0.2,  0.1,                                            //         1.5, 1.5, 1.5,  0.1,
-                0.2, 0.2, 0.2,  0.1                                             //         1.5, 1.5, 1.5,  0.1
-            };                                                                  //     };
 
+        // std::cout << "KP gains: ";
+        // for (const auto& kp : KP_gains_) std::cout << kp << "   ";  
+        // std::cout << "KD gains: ";
+        // for (const auto& kd : KD_gains_) std::cout << kd << "   ";  
+        // std::cout << std::endl;
+
+        // std::array<double, 8> KP = {                                   
+        //         0.0, 0.0, 0.0,  0.0,                                   
+        //         0.0, 0.0, 0.0, 0.0                                   
+        //     };                                   
+                                            
+        // std::array<double, 8> KD = {              
+        //         0.0, 0.0, 0.0,  0.0,              
+        //         0.0, 0.0, 0.0,  0.4              
+        //     }; 
+
+
+        // low-level gains (della prima volta)
+        // std::array<double, 8> KP = {                                            // std::array<double, 8> KP = {
+        //         10.0, 10.0, 10.0,  0.8,                                         //         40.0, 40.0, 40.0,  0.8,
+        //         10.0, 10.0, 10.0,  0.8                                          //         40.0, 40.0, 40.0,  0.8
+        //     };                                                                  //     };
+                                            
+        // std::array<double, 8> KD = {                                            // std::array<double, 8> KD = {
+        //         0.2, 0.2, 0.2,  0.1,                                            //         1.5, 1.5, 1.5,  0.1,
+        //         0.2, 0.2, 0.2,  0.1                                             //         1.5, 1.5, 1.5,  0.1
+        //     };                                                                  //     };
+
+            
 
         // ------------ Control mode selection ------------
         switch (control_mode_)
         {
             case REGULATION:
-                regulate_robot(KP, KD, effort_msg);
+
+                if (!initialized_regulation){
+                    t_for_tau_prova = this->now();
+                    initialized_regulation = true;
+                }
+                regulate_robot(effort_msg);
                 break;
 
-            case WHOLE_BODY:
+            case WHOLE_BODY:                                                     // RUN THE CONTROLLER ONLY WHEN YOU ARE SURE IT RECEIVE CORRECT SENSOR DATA (BE CAREFUL BEACUSE SOMETIMES THE ROBOT STOPS PUBLISHING ON /JOINT_STATE)
                { 
+
                     if (!initialized_walking_manager_){
                         initWalkingManagerOnce();
                         start_time_wbc_ = this->now();
                     }
 
                     const rclcpp::Time t_now = this->now();
-                    const double t_mpc = (t_now - start_time_wbc_).seconds();
+                    const double t_sec = (t_now - start_time_wbc_).seconds();
 
 
                     // ------------ Walking manager control ------------
@@ -674,18 +807,18 @@ private:
 
                     labrob::JointCommand tau;
                     labrob::JointCommand qdd;
-                    walking_manager_.update(robot_state_, tau, qdd, t_mpc * 1000);
+                    walking_manager_.update(robot_state_, tau, qdd, t_sec * 1000);
 
                     // auto end_time = std::chrono::high_resolution_clock::now();
                     // const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start).count();
                     
                     // RCLCPP_INFO_THROTTLE(
                     // this->get_logger(), *this->get_clock(), 1,  // ms
-                    // "t_mpc: %.3f s | Controller period: %ld us", t_mpc, duration
+                    // "t_sec: %.3f s | Controller period: %ld us", t_sec, duration
                     // );
 
 
-                    if (!fillMsgs(tau, qdd, KP, KD, effort_msg) || security_stop_) {             // redundant but ok
+                    if (!fillMsgs(tau, qdd, effort_msg) || security_stop_) {             // redundant security_stop_ but ok
                         if (security_stop_)
                             RCLCPP_WARN(this->get_logger(), "Security stop activated! Sending zero commands.");
                         sendZeroCommand();
@@ -693,7 +826,7 @@ private:
                     }
 
                     // ------------ log joint torques ------------
-                    joint_eff_log_file_ << t_mpc * 1000 << " ";
+                    joint_eff_log_file_ << " ";
                     int idx = 0;
                     for (pinocchio::JointIndex j = 2; static_cast<int>(j) < robot_model_.njoints; ++j, ++idx) {
                         const auto& name = robot_model_.names[j];
@@ -708,7 +841,17 @@ private:
                 return;
         }
 
-        // ------------ Publish effort command ------------
+        rclcpp::Time now = this->get_clock()->now();
+        double time_sec = now.seconds();
+
+        tau_commanded << std::fixed << std::setprecision(9)
+              << time_sec << " ";
+        for (int idx = 0; idx < na;  ++idx) {
+            tau_commanded << effort_msg.data[idx] << " ";
+        }
+        tau_commanded << std::endl;
+
+        // ------------ Publish effort commad ------------
         effort_cmd_pub_->publish(effort_msg);
     }
 
@@ -814,8 +957,15 @@ private:
     rclcpp::Time start_time_wbc_;
     rclcpp::Time start_time_filter_;
     rclcpp::Time t_prev_;
+    rclcpp::Time t_prev_joint_msg_;
     double nominal_dt_ = 0.002;                             // controller nominal period
     
+
+    rclcpp::Time t_for_tau_prova;
+    bool initialized_regulation = false;
+
+
+
     // controller class
     labrob::WalkingManager walking_manager_;
     
@@ -831,6 +981,7 @@ private:
     std::shared_ptr<labrob::KF> state_filter_ptr_;
     std::shared_ptr<labrob::RobotOdometry> robot_odometry_ptr_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    // std::shared_ptr<labrob::wheel_KF>  wheel_filter_ptr_;
 
     // log files
     std::ofstream odom_log_;
@@ -839,7 +990,14 @@ private:
     std::ofstream csv;
     std::ofstream robot_odom_log;
     std::ofstream joint_eff_log_file_;
-    std::ofstream wheel_log_;
+    // std::ofstream wheel_log_;
+
+    std::ofstream tau_commanded;
+
+    std::vector<double> KP_gains_;
+    std::vector<double> KD_gains_;
+
+
 };
 
 

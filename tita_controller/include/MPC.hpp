@@ -38,7 +38,7 @@ class MPC {
     dt_ = dt;
   }
 
-  Eigen::Vector<double, NX> get_DFIP_state(Eigen::Vector<double, N_IN> x0, bool set_d);
+  Eigen::Vector<double, NX> get_DFIP_state(Eigen::Vector<double, N_IN> x0, bool set_d =false);
 
   void init_solver(Eigen::Vector<double, N_IN> x0);
   
@@ -59,6 +59,10 @@ class MPC {
 
   bool record_logs = false;
   double t_msec = 0.0;
+
+  // used for logging... find a better way
+  Eigen::MatrixXd X;
+  Eigen::MatrixXd U;
   
 
 private:

@@ -31,7 +31,7 @@ class walkingPlanner {
   walkingPlanner(){};
 
 
-  void offline_plan(const double& dt, bool log_plan, const Eigen::Vector3d& pcom){
+  void offline_plan(const double& dt, bool log_plan, const Eigen::Vector3d& pcom, const double& theta_angle){
 
     dt_ = dt;
     N_STEP_ = static_cast<int>(T / dt_);     //n. of timesteps
@@ -55,14 +55,14 @@ class walkingPlanner {
     double v_contact_z = 0.0;
     double v           = 0.0;
     double omega       = 0.0;
-    double theta0      = 0.0;
+    double theta0      = theta_angle;
 
-    // double a           = 0.0;
-    // double alpha       = 0.0;
+    double a           = 0.0;
+    double alpha       = 0.0;
 
     double x0          = pcom(0);
     double y0          = pcom(1);
-    double z0          = pcom(2);
+    double z0          = pcom(2) +0.01;      // lift the robot of 1 cm 
     double z0_contact  = 0.0;
 
     double z_min       = 0.25;
@@ -87,36 +87,36 @@ class walkingPlanner {
 
       switch (phase) {
         case 0: // accel
-          // a =  a_max;
+          a =  a_max;
           v =  a_max * t;
 
-          // alpha =  alpha_max;
+          alpha =  alpha_max;
           omega =  alpha_max * t;
           break;
 
         case 1: // cruise
-          // a = 0.0;
+          a = 0.0;
           v = v_peak;
 
-          // alpha = 0.0;
+          alpha = 0.0;
           omega = omega_peak;
           break;
 
         case 2: { // decel
           double td = t - (T_acc + T_const);
-          // a = -a_max;
+          a = -a_max;
           v = v_peak - a_max * td;
 
-          // alpha = -alpha_max;
+          alpha = -alpha_max;
           omega = omega_peak - alpha_max * td;
           break;
         }
 
         default: // after end
-          // a = 0.0;
+          a = 0.0;
           v = 0.0;
 
-          // alpha = 0.0;
+          alpha = 0.0;
           omega = 0.0;
           break;
       }
@@ -154,7 +154,8 @@ class walkingPlanner {
       x_ref.col(t_step)(9)  = v_contact_z;
       x_ref.col(t_step)(10) = theta;
       x_ref.col(t_step)(11) = v;
-      x_ref.col(t_step)(12) = omega;
+      x_ref.col(t_step)(12) = omega;  
+
 
       x_ref.col(t_step)(13) = 0;            // jump state
     }
@@ -199,7 +200,7 @@ class walkingPlanner {
     }
   }
 
-  void jumpRoutine(const double& t_msec, const double h_jump){
+  void jumpRoutine(const double& t_msec, const double h_jump, const double h_leg = -1){
 
     double t0 = t_msec / 1000;
     int current_time_step = get_time_step_idx(t_msec);
@@ -254,7 +255,7 @@ class walkingPlanner {
 
 
     // leg trajectory
-    double h_leg_max = h_jump;            // or 0.4 for h_jump = 3.1 (max-height jump)
+    double h_leg_max = (h_leg > 0.0)? h_leg : h_jump;            // or 0.4 for h_jump = 0.31 (max-height jump)
     double e_contact = z0_contact;
     double d_contact = 0.0;
     double c_contact = 16 * (h_leg_max - z0_contact);
@@ -341,6 +342,8 @@ class walkingPlanner {
     double com_z_cur = x_ref.col(current_time_step)(2);
     double theta_cur = x_ref.col(current_time_step)(10);
     for (int t_step = N_CURR; t_step < N_STEP_; ++t_step){
+        double t = t0 + t_step * dt_;
+
         x_ref.col(t_step)(0)  = com_x_cur;
         x_ref.col(t_step)(1)  = com_y_cur;
         x_ref.col(t_step)(2)  = com_z_cur;

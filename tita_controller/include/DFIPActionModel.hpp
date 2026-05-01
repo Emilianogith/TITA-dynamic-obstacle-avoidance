@@ -33,7 +33,7 @@ public:
         m_(m)
   {
     // default weights
-    w_pcomxy_k_ = 1000.0;  
+    w_pcomxy_k_ = 100.0;  
     w_pcomz_k_  = 1000.0;
     w_vcomxy_k_ = 10.0; 
     w_vcomz_k_  = 50.0;

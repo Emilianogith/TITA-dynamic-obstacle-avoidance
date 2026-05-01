@@ -86,6 +86,7 @@ ament_target_dependencies(controller_manager
   std_msgs
   std_srvs   
 )
+
 # controller node
 add_executable(controller_node src/controller_node.cpp)
 
@@ -139,7 +140,6 @@ std_srvs
 
 
 
-
 install(TARGETS
   topic_reader
   controller_node
@@ -156,6 +156,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}  
 )
 
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 
 if(BUILD_TESTING)

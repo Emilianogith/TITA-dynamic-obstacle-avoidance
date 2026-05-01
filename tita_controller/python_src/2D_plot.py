@@ -310,7 +310,7 @@ ani = FuncAnimation(
     update,
     frames=len(times),
     init_func=init,
-    interval=1,   # ms between frames; adjust as you like
+    interval=100,   # ms between frames; adjust as you like
     blit=True,
     repeat=False,
 )

@@ -1,49 +1,49 @@
 #!/usr/bin/env python3
 """
-Plot only:
-- pCOM Estimated vs Odom
-- pCL Estimated
-- pCR Estimated
-
-No error plots.
+Plot:
+- Base position estimate
+- pCL estimated
+- pCR estimated
+- Velocity estimate
+- Velocity from differentiated position
+- Continuous Roll Pitch Yaw from quaternions
 """
 
 import pandas as pd
 import matplotlib.pyplot as plt
 import argparse
-
 import numpy as np
 from pathlib import Path
 
-def plot_xyz(ax, t, x1, y1, z1, x2, y2, z2, title):
-    ax.plot(t, x1, label=x1.name, color="C0")
-    ax.plot(t, x2, "--", label=x2.name, color="C0")
+def quat_to_rpy(qx, qy, qz, qw):
+    """Convert quaternions to roll, pitch, yaw (XYZ convention)."""
+    # roll (x-axis rotation)
+    roll = np.arctan2(2*(qw*qx + qy*qz), 1 - 2*(qx*qx + qy*qy))
+    # pitch (y-axis rotation)
+    pitch = np.arcsin(np.clip(2*(qw*qy - qz*qx), -1.0, 1.0))
+    # yaw (z-axis rotation)
+    yaw = np.arctan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz))
+    return roll, pitch, yaw
 
-    ax.plot(t, y1, label=y1.name, color="C1")
-    ax.plot(t, y2, "--", label=y2.name, color="C1")
+def make_quaternion_continuous(q):
+    """Fix quaternion sign flips for continuity."""
+    q = q.copy()
+    for i in range(1, len(q)):
+        if np.dot(q[i-1], q[i]) < 0:
+            q[i] = -q[i]
+    return q
 
-    ax.plot(t, z1, label=z1.name, color="C2")
-    ax.plot(t, z2, "--", label=z2.name, color="C2")
-
+def plot_single_xyz(ax, t, x, y, z, title, ylabel=""):
+    ax.plot(t, x, label="x")
+    ax.plot(t, y, label="y")
+    ax.plot(t, z, label="z")
     ax.set_title(title)
-    ax.set_ylabel("Position [m]")
-    ax.grid(True, alpha=0.3)
-    ax.legend(ncol=2, fontsize=9)
-
-
-def plot_single_xyz(ax, t, x, y, z, title):
-    ax.plot(t, x, label=x.name)
-    ax.plot(t, y, label=y.name)
-    ax.plot(t, z, label=z.name)
-
-    ax.set_title(title)
-    ax.set_ylabel("Position [m]")
+    if ylabel:
+        ax.set_ylabel(ylabel)
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=9)
 
-
 def main():
-
     parser = argparse.ArgumentParser()
     file_path = Path.home() / "Desktop/ros2_ws/robot_logs/kf_test.csv"
     parser.add_argument("--file", default=file_path)
@@ -51,23 +51,9 @@ def main():
 
     df = pd.read_csv(args.file)
 
-    required_cols = [
-        "t",
-
-        "p_odom_x","p_odom_y","p_odom_z",
-        "p_est_x","p_est_y","p_est_z",
-        "v_est_x","v_est_y","v_est_z",
-        "p_cL_est_x","p_cL_est_y","p_cL_est_z",
-        "p_cR_est_x","p_cR_est_y","p_cR_est_z",
-    ]
-
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing columns: {missing}")
-
     t = df["t"].values
 
-    # Numerical differentiation of estimated position
+    # Compute velocities by differentiating position
     px = df["p_est_x"].values
     py = df["p_est_y"].values
     pz = df["p_est_z"].values
@@ -76,74 +62,66 @@ def main():
     vy_diff = np.gradient(py, t)
     vz_diff = np.gradient(pz, t)
 
-    fig, axes = plt.subplots(3,2, figsize=(16,8), sharex=True)
+    fig, axes = plt.subplots(3, 2, figsize=(16, 8), sharex=True)
 
-    # pCOM odom vs estimate
-    # plot_xyz(
-    #     axes[0,0],
-    #     t,
-    #     df["p_est_x"], df["p_est_y"], df["p_est_z"],
-    #     df["p_odom_x"], df["p_odom_y"], df["p_odom_z"],
-    #     "Base position: Estimate vs Odom"
-    # )
-
+    # Base position
     plot_single_xyz(
-        axes[0,0],
-        t,
+        axes[0,0], t,
         df["p_est_x"], df["p_est_y"], df["p_est_z"],
-        "Base position Estimate"
+        "Base Position Estimate", "Position [m]"
     )
 
-    # Left foot estimate
+    # Left foot
     plot_single_xyz(
-        axes[1,0],
-        t,
-        df["p_cL_est_x"],
-        df["p_cL_est_y"],
-        df["p_cL_est_z"],
-        "pCL Estimate"
+        axes[1,0], t,
+        df["p_cL_est_x"], df["p_cL_est_y"], df["p_cL_est_z"],
+        "pCL Estimate", "Position [m]"
     )
 
-    # Right foot estimate
+    # Right foot
     plot_single_xyz(
-        axes[2,0],
-        t,
-        df["p_cR_est_x"],
-        df["p_cR_est_y"],
-        df["p_cR_est_z"],
-        "pCR Estimate"
+        axes[2,0], t,
+        df["p_cR_est_x"], df["p_cR_est_y"], df["p_cR_est_z"],
+        "pCR Estimate", "Position [m]"
     )
-
-    plot_single_xyz(
-        axes[0,1],
-        t,
-        df["v_est_x"],
-        df["v_est_y"],
-        df["v_est_z"],
-        "Velocity Estimate"
-    )
-
-    axes[0,1].set_ylabel("Velocity [m/s]")
-    axes[0,1].set_xlabel("Time [s]")
     axes[2,0].set_xlabel("Time [s]")
 
+    # Velocity estimate
+    plot_single_xyz(
+        axes[0,1], t,
+        df["v_est_x"], df["v_est_y"], df["v_est_z"],
+        "Velocity Estimate", "Velocity [m/s]"
+    )
 
-    # Velocity from differentiated position
+    # Differentiated velocity
     axes[1,1].plot(t, vx_diff, "--", label="v_diff_x")
     axes[1,1].plot(t, vy_diff, "--", label="v_diff_y")
     axes[1,1].plot(t, vz_diff, "--", label="v_diff_z")
-
     axes[1,1].set_title("Velocity: Differentiated Position")
     axes[1,1].set_ylabel("Velocity [m/s]")
     axes[1,1].grid(True, alpha=0.3)
     axes[1,1].legend(fontsize=9)
 
-    # axes[1, 1].set_visible(False)
-    axes[2, 1].set_visible(False)
+    # --- Continuous Roll Pitch Yaw from quaternions ---
+    q = df[["qx","qy","qz","qw"]].values
+    q = make_quaternion_continuous(q)  # fix sign flips
+
+    roll, pitch, yaw = quat_to_rpy(q[:,0], q[:,1], q[:,2], q[:,3])
+    roll  = np.unwrap(roll)
+    pitch = np.unwrap(pitch)
+    yaw   = np.unwrap(yaw)
+
+    axes[2,1].plot(t, roll,  label="roll")
+    axes[2,1].plot(t, pitch, label="pitch")
+    axes[2,1].plot(t, yaw,   label="yaw")
+    axes[2,1].set_title("Orientation (Roll Pitch Yaw)")
+    axes[2,1].set_ylabel("Angle [rad]")
+    axes[2,1].set_xlabel("Time [s]")
+    axes[2,1].grid(True, alpha=0.3)
+    axes[2,1].legend(fontsize=9)
 
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     main()

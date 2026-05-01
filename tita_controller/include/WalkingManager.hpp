@@ -4,8 +4,10 @@
 #include <DesiredConfiguration.hpp>
 #include <MPC.hpp>
 // #include <LQR.hpp>
+// #include <walkingPlanner.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
+#include <Logger.hpp>
 
 
 namespace labrob {
@@ -13,7 +15,7 @@ namespace labrob {
 class WalkingManager {
  public:
 
-  bool init(const labrob::RobotState& initial_robot_state, 
+  bool init(const labrob::RobotState& initial_robot_state,
     std::map<std::string, double> &armatures,
     const pinocchio::Model& robot_model);
 
@@ -24,8 +26,10 @@ class WalkingManager {
       double t_msec_
   );
 
+  void save_data();
+  
   labrob::DesiredConfiguration des_configuration_;
-
+  
 
  protected:
   const pinocchio::Model* robot_model_;
@@ -43,16 +47,16 @@ class WalkingManager {
 private:
 
   double controller_frequency_;
-  // double t_msec_ = 0;
+  int cycle_counter = 0;
 
 
   labrob::walkingPlanner walkingPlanner_;
   labrob::MPC mpc_;
+  // labrob::LQR lqr_;
 
 
-  // Log files:
-  // std::ofstream mpc_timings_log_file_;
-  std::ofstream state_log_file_;
+  // Logger:
+  labrob::Logger logger_;
 
 }; 
 

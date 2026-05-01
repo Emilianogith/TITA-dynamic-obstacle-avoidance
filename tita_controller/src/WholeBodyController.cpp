@@ -26,7 +26,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
                   
   params.mu = 0.9;                              // 0.9
 
-  params.weight_tau_reg = 1e-8;
+  params.weight_tau_reg = 1e-8;   // prova per gambe trascinate
 
   return params;
 }
@@ -43,6 +43,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
   params.weight_lwheel = 1.1;           
   params.weight_rwheel = 1.1;          
   params.weight_base = 0.4;   
+
   return params;
 }
 
@@ -77,7 +78,7 @@ WholeBodyController::WholeBodyController(
   base_link_idx_ = robot_model_->getFrameId("base_link");
 
   wheel_radius_ = 0.0925;
-  wheel_width_  = 0.017;
+  wheel_width_  = 0.034;
   wheel_length_  = 0.005;
 
   J_right_wheel_ = Eigen::MatrixXd::Zero(6, robot_model_->nv);
@@ -354,7 +355,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd d_max_force_one = Eigen::VectorXd::Zero(4 * n_contacts_);
 
   Eigen::MatrixXd H_tau = params_.weight_tau_reg * Eigen::MatrixXd::Identity(n_joints_, n_joints_);
-  Eigen::VectorXd f_tau = -2 * params_.weight_tau_reg * desired.tau_prev;
+  Eigen::VectorXd f_tau = -params_.weight_tau_reg * desired.tau_prev;
 
   Eigen::MatrixXd H = Eigen::MatrixXd::Zero(H_acc.rows() + 2 * H_force_one.rows() + H_tau.rows(), H_acc.cols() + 2 * H_force_one.cols() + H_tau.cols());
   H.block(0, 0, H_acc.rows(), H_acc.cols()) = H_acc;

@@ -239,7 +239,7 @@ public:
         joint_state_log_.open(prefix + "joint_state_log.txt");
 
         // ---------- Joint effort log ----------
-        joint_eff_log_file_.open(prefix + "joint_eff.txt");
+        joint_eff_log_file_.open("/tmp/joint_eff.txt");
     }
 
 
@@ -341,46 +341,46 @@ private:
             robot_state_.joint_state[name].vel = robot_sensor_.joints[name].vel; 
 
             // special handling for wheel joints to apply low-pass filter and log
-            if (name == "joint_left_leg_4"){
+            // if (name == "joint_left_leg_4"){
 
-                double alpha = robot_sensor_.wheel_left.alpha;
-                double pos_prev = robot_sensor_.wheel_left.pos_prev;
+            //     double alpha = robot_sensor_.wheel_left.alpha;
+            //     double pos_prev = robot_sensor_.wheel_left.pos_prev;
 
-                double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
+            //     double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
 
-                rclcpp::Time t = msg->header.stamp;
-                double dt = (t - robot_sensor_.wheel_left.t_prev).seconds();  
+            //     rclcpp::Time t = msg->header.stamp;
+            //     double dt = (t - robot_sensor_.wheel_left.t_prev).seconds();  
 
-                wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-                << name << 
-                ":  pos: " << robot_state_.joint_state[name].pos <<
-                ":  filtered pos: " << filtered_pos <<
-                " vel: " << robot_state_.joint_state[name].vel  <<
-                " vel_diff: " << (filtered_pos - robot_sensor_.wheel_left.pos_prev) / dt  << std::endl;
+            //     wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
+            //     << name << 
+            //     ":  pos: " << robot_state_.joint_state[name].pos <<
+            //     ":  filtered pos: " << filtered_pos <<
+            //     " vel: " << robot_state_.joint_state[name].vel  <<
+            //     " vel_diff: " << (filtered_pos - robot_sensor_.wheel_left.pos_prev) / dt  << std::endl;
 
-                robot_sensor_.wheel_left.pos_prev = filtered_pos;
-                robot_sensor_.wheel_left.t_prev = t;
-            }
-            else if (name == "joint_right_leg_4"){
+            //     robot_sensor_.wheel_left.pos_prev = filtered_pos;
+            //     robot_sensor_.wheel_left.t_prev = t;
+            // }
+            // else if (name == "joint_right_leg_4"){
                 
-                double alpha = robot_sensor_.wheel_right.alpha;
-                double pos_prev = robot_sensor_.wheel_right.pos_prev;
+            //     double alpha = robot_sensor_.wheel_right.alpha;
+            //     double pos_prev = robot_sensor_.wheel_right.pos_prev;
 
-                double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
+            //     double filtered_pos = alpha * robot_state_.joint_state[name].pos + (1 - alpha) * pos_prev;
 
-                rclcpp::Time t = msg->header.stamp;
-                double dt = (t - robot_sensor_.wheel_right.t_prev).seconds();  
+            //     rclcpp::Time t = msg->header.stamp;
+            //     double dt = (t - robot_sensor_.wheel_right.t_prev).seconds();  
                 
-                wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-                << name << 
-                ":  pos: " << robot_state_.joint_state[name].pos <<
-                ":  filtered pos: " << filtered_pos <<
-                " vel: " << robot_state_.joint_state[name].vel  <<
-                " vel_diff: " << (filtered_pos - robot_sensor_.wheel_right.pos_prev) / dt  << std::endl;
+            //     wheel_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
+            //     << name << 
+            //     ":  pos: " << robot_state_.joint_state[name].pos <<
+            //     ":  filtered pos: " << filtered_pos <<
+            //     " vel: " << robot_state_.joint_state[name].vel  <<
+            //     " vel_diff: " << (filtered_pos - robot_sensor_.wheel_right.pos_prev) / dt  << std::endl;
                 
-                robot_sensor_.wheel_right.pos_prev = filtered_pos;
-                robot_sensor_.wheel_right.t_prev = t;
-            }
+            //     robot_sensor_.wheel_right.pos_prev = filtered_pos;
+            //     robot_sensor_.wheel_right.t_prev = t;
+            // }
 
         }
 
@@ -414,8 +414,8 @@ private:
         }
 
         // Manual calibration: add some offset to wheel velocity measurements to compensate for the bias
-        filter_input(6+3) += 0.005;
-        filter_input(6+7) -= 0.005;
+        // filter_input(6+3) += 0.005;
+        // filter_input(6+7) -= 0.005;
         // -------------------------------------------
         
 
@@ -458,19 +458,19 @@ private:
 
 
         // --------- Compute odometry ---------
-        labrob::Odom robot_odom = robot_odometry_ptr_->forward_step(filter_params.segment<8>(4), 
-        filter_input.segment<8>(6), 
-        robot_sensor_.imu.orientation,
-        filter_input.segment<3>(3),
-        dt);
+        // labrob::Odom robot_odom = robot_odometry_ptr_->forward_step(filter_params.segment<8>(4), 
+        // filter_input.segment<8>(6), 
+        // robot_sensor_.imu.orientation,
+        // filter_input.segment<3>(3),
+        // dt);
 
-        robot_odom_log << std::fixed << std::setprecision(9);
-        robot_odom_log << t_rel << ","
-            << robot_odom.position(0) << "," << robot_odom.position(1) << "," << robot_odom.position(2) << ","
-            << robot_odom.velocity(0) << "," << robot_odom.velocity(1) << "," << robot_odom.velocity(2) << ","
-            << robot_odom.pc_l(0) << "," << robot_odom.pc_l(1) << "," << robot_odom.pc_l(2) << ","
-            << robot_odom.pc_r(0) << "," << robot_odom.pc_r(1) << "," << robot_odom.pc_r(2) << ","
-            << robot_odom.w_l << "," << robot_odom.w_r << "\n";
+        // robot_odom_log << std::fixed << std::setprecision(9);
+        // robot_odom_log << t_rel << ","
+        //     << robot_odom.position(0) << "," << robot_odom.position(1) << "," << robot_odom.position(2) << ","
+        //     << robot_odom.velocity(0) << "," << robot_odom.velocity(1) << "," << robot_odom.velocity(2) << ","
+        //     << robot_odom.pc_l(0) << "," << robot_odom.pc_l(1) << "," << robot_odom.pc_l(2) << ","
+        //     << robot_odom.pc_r(0) << "," << robot_odom.pc_r(1) << "," << robot_odom.pc_r(2) << ","
+        //     << robot_odom.w_l << "," << robot_odom.w_r << "\n";
 
 
         // --------- Publish filtered state ---------
@@ -736,6 +736,13 @@ private:
         if (security_stop_){
             RCLCPP_WARN(this->get_logger(), "Security stop activated! Sending zero commands.");
             sendZeroCommand();
+             
+            // save logs (if any)
+            if (initialized_walking_manager_) 
+            {
+                walking_manager_.save_data();
+                initialized_walking_manager_ = !initialized_walking_manager_;
+            }
             return;
         }
 
@@ -772,7 +779,7 @@ private:
                     }
 
                     const rclcpp::Time t_now = this->now();
-                    const double t_mpc = (t_now - start_time_wbc_).seconds();
+                    const double t_sec = (t_now - start_time_wbc_).seconds();
 
 
                     // ------------ Walking manager control ------------
@@ -802,7 +809,7 @@ private:
                     }
 
                     // ------------ log joint torques ------------
-                    joint_eff_log_file_ << t_mpc * 1000 << " ";
+                    joint_eff_log_file_ << " ";
                     int idx = 0;
                     for (pinocchio::JointIndex j = 2; static_cast<int>(j) < robot_model_.njoints; ++j, ++idx) {
                         const auto& name = robot_model_.names[j];

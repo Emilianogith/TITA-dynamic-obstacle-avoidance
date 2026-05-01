@@ -27,7 +27,7 @@ efforts = []
 
 # Regex dynamically uses joint name and captures effort
 pattern = re.compile(
-    rf"(?P<time>\d+\.\d+)\s+{re.escape(joint_name)}:\s+pos:\s+(?P<pos>[-+]?\d*\.\d+)\s+vel:\s+(?P<vel>[-+]?\d*\.\d+)\s+effort:\s+(?P<effort>[-+]?\d*\.\d+)"
+    rf"(?P<time>\d+\.\d+)\s+\d+\.\d+\s+{re.escape(joint_name)}:\s+pos:\s+(?P<pos>[-+]?\d*\.\d+)\s+vel:\s+(?P<vel>[-+]?\d*\.\d+)\s+effort:\s+(?P<effort>[-+]?\d*\.\d+)"
 )
 
 # ---------- Parse file ----------

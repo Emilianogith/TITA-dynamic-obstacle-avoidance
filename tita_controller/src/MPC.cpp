@@ -1,20 +1,7 @@
 #include <MPC.hpp>
 #include <chrono>
 
-
-double wrapToPi(double a) {
-  a = std::fmod(a + M_PI, 2.0 * M_PI);
-  if (a < 0) a += 2.0 * M_PI;
-  return a - M_PI;
-}
-
-double unwrapNear(double theta_wrapped, double theta_prev) {
-  return theta_prev + wrapToPi(theta_wrapped - theta_prev);
-}
-
-
-Eigen::Vector<double, labrob::MPC::NX> labrob::MPC::get_DFIP_state(Eigen::Vector<double, N_IN> x_IN,
-                                                                   bool set_d = false){
+Eigen::Vector<double, labrob::MPC::NX> labrob::MPC::get_DFIP_state(Eigen::Vector<double, N_IN> x_IN, bool set_d){
   Eigen::Vector3d pcom       = x_IN.segment<3>(0);
   Eigen::Vector3d vcom       = x_IN.segment<3>(3);
   Eigen::Vector3d pl_world   = x_IN.segment<3>(6);
@@ -98,6 +85,10 @@ void labrob::MPC::init_solver(Eigen::Vector<double, N_IN> x_IN){
     us[i].segment<3>(3) = fl0;
     us[i].segment<3>(6) = fr0;
   }
+
+  // resize log metrices
+  X.resize(NH, NX);
+  U.resize(NH - 1, NU);
 }
 
 void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
@@ -117,7 +108,7 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
 
   // auto t1 = std::chrono::high_resolution_clock::now();
   // std::chrono::duration<double, std::milli> ms = t1 - t0;
-  // std::cout << "MPC Solve time: " << ms.count() << " ms\n"<< std::endl;
+  // std::cout << "Solve time: " << ms.count() << " ms\n"<< std::endl;
 
 
 
@@ -126,13 +117,20 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   auto x_traj = solver->get_xs();
   auto u_traj = solver->get_us();
 
+
   // Shift by one guess trajectory
   for (unsigned int i = 0; i < NH; ++i)
+  {
       xs[i] = x_traj[i + 1];  
+      X.row(i) = x_traj[i].transpose();    // save for logging
+  }
   xs[NH] = x_traj[NH]; 
 
   for (unsigned int i = 0; i < NH - 1; ++i)
+  {
       us[i] = u_traj[i + 1];
+      U.row(i) = u_traj[i].transpose();    // save for logging
+  }
   us[NH - 1] = u_traj[NH- 1]; 
 
 
@@ -193,34 +191,6 @@ void labrob::MPC::solve(Eigen::Vector<double, N_IN> x_IN){
   alpha_   = alpha;
   omega_   = w_curr + dt_ * alpha_;
   theta_   = theta_curr +  dt_ * w_curr;
-
-
-
-
-
-  if(record_logs){
-    // create folder if it does not exist
-    std::string folder = "/tmp/mpc_data/" + std::to_string(t_msec);
-    std::string command = "mkdir -p " + folder;
-    const int ret = std::system(command.c_str());
-    (void)ret;
-
-    // print trajectory to file
-    std::string path_x = "/tmp/mpc_data/" + std::to_string(t_msec) + "/x.txt";
-    std::ofstream file_x(path_x);
-    for (int i = 0; i < NH+1; ++i) {
-      file_x << x_traj[i].transpose() << std::endl;
-    }
-    file_x.close();
-    std::string path_u = "/tmp/mpc_data/" + std::to_string(t_msec) + "/u.txt";
-    std::ofstream file_u(path_u);
-    for (int i = 0; i < NH; ++i) {
-      file_u << u_traj[i].transpose() << std::endl;
-    }
-    file_u.close();
-
-    record_logs = false;
-  }
    
 }
 

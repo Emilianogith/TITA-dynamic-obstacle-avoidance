@@ -16,7 +16,7 @@ ang_vel_re = re.compile(r"angular_velocity:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]
 lin_acc_re = re.compile(r"linear_acceleration:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)")
 
 # Read log file
-log_path = Path.home() / "Desktop/ros2_ws/robot_logs/imu_logs.csv"
+log_path = Path.home() / "Desktop/ros2_ws/robot_logs/imu_log.txt"
 with open(log_path, "r") as f:
     for line in f:
         ts_match = timestamp_re.search(line)
