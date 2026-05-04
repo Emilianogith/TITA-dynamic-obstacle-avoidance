@@ -20,6 +20,11 @@ struct WBCEntry {
     double com_y = 0.0;
     double com_z = 0.0;
 
+    double qx = 0.0;
+    double qy = 0.0;
+    double qz = 0.0;
+    double qw = 1.0;
+
     double com_x_des = 0.0;
     double com_y_des = 0.0;
     double com_z_des = 0.0;
@@ -149,6 +154,7 @@ private:
         }
 
         out << "time_ms,"
+            << "qx,qy,qz,qw"
             << "com_x,com_y,com_z,"
             << "com_x_des,com_y_des,com_z_des,"
             << "wheel_l_x,wheel_l_y,wheel_l_z,"
@@ -158,6 +164,7 @@ private:
 
         for (const auto& e : wbc_entries_) {
             out << e.time_ms << ","
+                << e.qx << "," << e.qy << "," << e.qz << "," << e.qw << ","
                 << e.com_x << "," << e.com_y << "," << e.com_z << ","
                 << e.com_x_des << "," << e.com_y_des << "," << e.com_z_des << ","
                 << e.wheel_l_x << "," << e.wheel_l_y << "," << e.wheel_l_z << ","

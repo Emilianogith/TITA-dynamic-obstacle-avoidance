@@ -157,10 +157,13 @@ class MujocoUI {
     mjv_defaultOption(&opt_);
     mjr_defaultContext(&con_);
 
+    
     // Visualize contact points and contact forces
     opt_.flags[mjVIS_CONTACTPOINT] = false;
     opt_.flags[mjVIS_CONTACTFORCE] = true;
     opt_.flags[mjVIS_TRANSPARENT] = false;
+    
+    opt_.geomgroup[1] = 0;    // added to not show the collision boxes of the robot
 
     // cam_.distance = 10.0;
     // cam_.azimuth = -25.0;

@@ -198,13 +198,12 @@ WholeBodyController::compute_inverse_dynamics(
   );
   auto err_rwheel_vel = desired.rwheel.vel - current_rwheel_vel;
 
-
   auto err_base_orientation = err_rotation(desired.base_link.pos, current_base_link_pos);
   auto err_base_orientation_vel = desired.base_link.vel - current_base_link_vel;
 
   Eigen::VectorXd q_joint = q.tail(q.size() - 7);
   Eigen::VectorXd qdot_joint = qdot.tail(qdot.size() - 6);
-
+  
   Eigen::VectorXd err_posture(6 + n_joints_);
   err_posture << Eigen::VectorXd::Zero(6), desired.qjnt - q_joint;
 
@@ -368,6 +367,8 @@ WholeBodyController::compute_inverse_dynamics(
           H_acc.cols() + 2 * H_force_one.cols(),
           H_tau.rows(),
           H_tau.cols()) = H_tau;
+
+  
   Eigen::VectorXd f(f_acc.size() + 2 * f_force_one.size() + f_tau.size());
   f << f_acc, f_force_one, f_force_one, f_tau;
 

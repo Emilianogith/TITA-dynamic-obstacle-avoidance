@@ -46,7 +46,7 @@ def main():
     # time for x.txt (assume starts at 0)
     t_ms = np.arange(x.shape[0]) * DT_MS
 
-    fig, ax = plt.subplots(1, 2, figsize=(10, 6), layout="constrained")
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5), layout="constrained")
 
     # --- Left: x-y plan
     ax0 = ax[0]
@@ -77,7 +77,7 @@ def main():
     # --- Right: z over time (from x.txt)
     ax1 = ax[1]
     ax1.plot(t_ms, pcom_z, linewidth=2, label="CoM z")
-    ax1.plot(t_ms, c_z, linestyle="--", linewidth=2, label="c z")
+    ax1.plot(t_ms, c_z, linestyle="--", linewidth=2, label="pc z")
     ax1.set_xlabel("t [ms]")
     ax1.set_ylabel("z [m]")
     ax1.set_title("Plan for z reference trajectories")
@@ -98,10 +98,10 @@ def main():
 
         fig_jump, ax_jump = plt.subplots(figsize=(8, 6), layout="constrained")
         ax_jump.plot(t_jump_ms, pcom_z_jump, linewidth=2, label="CoM z")
-        ax_jump.plot(t_jump_ms, c_z_jump, linestyle="--", linewidth=2, label="c z")
+        ax_jump.plot(t_jump_ms, c_z_jump, linestyle="--", linewidth=2, label="pc z")
         ax_jump.set_xlabel("t [ms]")
         ax_jump.set_ylabel("z [m]")
-        ax_jump.set_title("Plan for z references in jump trajectory")
+        ax_jump.set_title("Vertical references in jump trajectory")
         ax_jump.grid(True)
         ax_jump.legend()
 

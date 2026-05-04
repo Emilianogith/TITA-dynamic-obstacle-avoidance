@@ -19,7 +19,7 @@ class QPOASESQPSolver : public QPSolver<double>{
   nWSR_(nWSR),
   num_variables_(numVariables),
   num_equality_constraints_(numEqualityConstraints),
-  num_inequality_constraints_(numInqualityConstraints) {
+  num_inequality_constraints_(numInequalityConstraints) {
     const int numConstraints = numEqualityConstraints + numInequalityConstraints;
     qp_ = qpOASES::QProblem(numVariables, numConstraints);
     qpOASES::Options options;

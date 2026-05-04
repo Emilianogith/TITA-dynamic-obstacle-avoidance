@@ -24,7 +24,7 @@ avg_mpc = sum(time_mpc) / len(time_mpc)
 avg_wbc = sum(time_wbc) / len(time_wbc)
 avg_total = sum(time_total) / len(time_total)
 
-plt.figure()
+plt.figure(figsize=(10, 7))
 
 plt.plot(cycles, time_mpc, label="MPC (us)")
 plt.plot(cycles, time_wbc, label="WBC (us)")

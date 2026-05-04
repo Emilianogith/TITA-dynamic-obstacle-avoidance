@@ -292,11 +292,13 @@ void WalkingManager::update(
 
     // for reducing chattering
     int idx = 0;
+    double alpha = 0.0;
     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model_.njoints; ++joint_id, ++idx) {
         const auto& joint_name = robot_model_.names[joint_id];
-        des_configuration_.tau_prev(idx) = joint_torque[joint_name];
+        des_configuration_.tau_prev(idx) = alpha * des_configuration_.tau_prev(idx) + (1 - alpha) * joint_torque[joint_name];
     }
     
+
 
     auto end_time = std::chrono::system_clock::now();
     auto controller_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -313,6 +315,11 @@ void WalkingManager::update(
     // log WBC data
     labrob::WBCEntry wbc_entry;
     wbc_entry.time_ms = t_msec_;
+
+    wbc_entry.qx = q(3); 
+    wbc_entry.qy = q(4); 
+    wbc_entry.qz = q(5);
+    wbc_entry.qw = q(6);
 
     wbc_entry.com_x = p_CoM(0); 
     wbc_entry.com_y = p_CoM(1); 

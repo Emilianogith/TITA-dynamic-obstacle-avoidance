@@ -14,7 +14,7 @@ def plot_joint_data(path, ylabel, title):
     time = np.arange(n_steps)
 
     # Plot each joint torque
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(10, 7))
     for j in range(n_joints):
         plt.plot(time, data[:, j], label=f"Joint {j+1}")
 
