@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.19)
 project(tita_controller)
 
 # Default to Release build if not specified
@@ -32,17 +32,33 @@ find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)         # for the services
 
 find_package(glfw3 REQUIRED)
-find_package(pinocchio REQUIRED)
-find_package(crocoddyl REQUIRED)
-
 find_package(mujoco REQUIRED)
 
+# Use pkg-config for pinocchio and crocoddyl to avoid eigenpy's CMake Python
+# detection (which breaks when building inside the ros pixi environment).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(pinocchio REQUIRED IMPORTED_TARGET pinocchio)
+pkg_check_modules(crocoddyl REQUIRED IMPORTED_TARGET crocoddyl)
 
-# Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
-set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
-set(hpipm_INCLUDE_DIRS /opt/hpipm/include)
-set(blasfeo_LIBRARIES /opt/blasfeo/lib/libblasfeo.a)
-set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
+
+# Resolve PROJECT_ROOT: use explicit cmake arg, or resolve the symlink of this
+# source dir to find the repo root (tita_controller lives one level below root).
+if(NOT DEFINED PROJECT_ROOT)
+  file(REAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}" _real_src)
+  get_filename_component(PROJECT_ROOT "${_real_src}/.." ABSOLUTE)
+endif()
+
+set(blasfeo_INCLUDE_DIRS ${PROJECT_ROOT}/third_party/blasfeo/Include)
+set(hpipm_INCLUDE_DIRS  ${PROJECT_ROOT}/third_party/hpipm/Include)
+set(blasfeo_LIBRARIES   ${PROJECT_ROOT}/third_party/blasfeo/Lib/libblasfeo.a)
+set(hpipm_LIBRARIES     ${PROJECT_ROOT}/third_party/hpipm/Lib/libhpipm.a)
+
+find_path(IPOPT_INCLUDE_DIR IpIpoptApplication.hpp
+  PATH_SUFFIXES coin-or coin
+)
+if(NOT IPOPT_INCLUDE_DIR)
+  message(FATAL_ERROR "IPOPT headers not found. Install ipopt in your pixi environment.")
+endif()
 
 
 add_library(
@@ -61,13 +77,14 @@ target_include_directories(UtilsLib
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
+    ${IPOPT_INCLUDE_DIR}
 )
 
 target_link_libraries(UtilsLib
-  pinocchio::pinocchio
+  PkgConfig::pinocchio
+  PkgConfig::crocoddyl
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
-  crocoddyl::crocoddyl
 )
 
 # topic reder

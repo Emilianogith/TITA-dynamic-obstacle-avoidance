@@ -16,10 +16,19 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
 endif()
 
 # Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
-set(blasfeo_INCLUDE_DIRS /Users/emilianoparadiso/.local/blasfeo/include)
-set(hpipm_INCLUDE_DIRS /Users/emilianoparadiso/.local/hpipm/include)
-set(blasfeo_LIBRARIES /Users/emilianoparadiso/.local/blasfeo/lib/libblasfeo.a)
-set(hpipm_LIBRARIES /Users/emilianoparadiso/.local/hpipm/lib/libhpipm.a)
+set(blasfeo_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/blasfeo/Include)
+set(hpipm_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hpipm/Include)
+set(blasfeo_LIBRARIES   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/blasfeo/Lib/libblasfeo.a)
+set(hpipm_LIBRARIES     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/hpipm/Lib/libhpipm.a)
+
+# IPOPT headers are installed under include/coin-or/ — add that directory so
+# that crocoddyl's ipopt.hpp can find <IpIpoptApplication.hpp> without prefix.
+find_path(IPOPT_INCLUDE_DIR IpIpoptApplication.hpp
+  PATH_SUFFIXES coin-or coin
+)
+if(NOT IPOPT_INCLUDE_DIR)
+  message(FATAL_ERROR "IPOPT headers not found. Install ipopt in your pixi environment.")
+endif()
 
 add_library(
   UtilsLib STATIC
@@ -37,6 +46,7 @@ target_include_directories(UtilsLib
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
+    ${IPOPT_INCLUDE_DIR}
 )
 
 target_link_libraries(UtilsLib
