@@ -36,9 +36,19 @@ pandas     = ">=2.0"
 channels = ["robostack-humble", "conda-forge"]
 
 [feature.ros.dependencies]
-python            = "3.12.*"
-numpy             = ">=2.0"
-ros2-distro-mutex = "0.8.*"
+c-compiler           = "*"
+cxx-compiler         = "*"
+sysroot_linux-64     = "2.17.*"
+libgl-devel          = "*"
+numpy                = "<2"
+ros2-distro-mutex    = "0.8.*"
+pinocchio            = ">=3.8,<3.9"
+crocoddyl            = ">=3.1,<3.2.1"
+mujoco               = ">=3.3,<3.4"
+eigen                = "*"
+ipopt                = "*"
+casadi               = "*"
+octomap              = "*"
 ros-humble-rclcpp        = "*"
 ros-humble-std-msgs      = "*"
 ros-humble-nav-msgs      = "*"
@@ -48,12 +58,17 @@ ros-humble-tf2           = "*"
 ros-humble-tf2-ros       = "*"
 ros-humble-std-srvs      = "*"
 ros-humble-ament-cmake   = "*"
+ros-humble-ament-lint-auto   = "*"
+ros-humble-ament-lint-common = "*"
+ros-humble-ros2cli       = "*"
+ros-humble-ros2topic     = "*"
+ros-humble-ros2node      = "*"
+ros-humble-rclpy         = "*"
 colcon-common-extensions = "*"
 
 [feature.ros.tasks]
 setup-ros-ws = { cmd = "mkdir -p $HOME/ros2_ws/src && ln -sfn $PIXI_PROJECT_ROOT/tita_controller $HOME/ros2_ws/src/tita_controller" }
-build-ros    = { cmd = "cd $HOME/ros2_ws && PKG_CONFIG_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/default/lib/pkgconfig:$PIXI_PROJECT_ROOT/.pixi/envs/default/share/pkgconfig:$PKG_CONFIG_PATH colcon build --symlink-install --cmake-args -DCMAKE_PREFIX_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/default -DPROJECT_ROOT=$PIXI_PROJECT_ROOT -DBUILD_TESTING=OFF", depends-on = ["setup-ros-ws"] }
-
+build-ros    = { cmd = "cd $HOME/ros2_ws && colcon build --symlink-install --cmake-args -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -Dpinocchio_DIR=$CONDA_PREFIX/lib/cmake/pinocchio -Dcrocoddyl_DIR=$CONDA_PREFIX/lib/cmake/crocoddyl -Dcoal_DIR=$CONDA_PREFIX/lib/cmake/coal -DCMAKE_EXE_LINKER_FLAGS='-no-pie -Wl,-rpath,$CONDA_PREFIX/lib'", depends-on = ["setup-ros-ws"] }
 [environments]
 default = { features = ["sim", "pytools"], solve-group = "default" }
 ros     = { features = ["ros"],            solve-group = "ros" }
