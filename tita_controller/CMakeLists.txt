@@ -194,3 +194,7 @@ endif()
 
 ament_package()
 
+
+install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+install(DIRECTORY tita_description/ DESTINATION share/${PROJECT_NAME}/tita_description)
+

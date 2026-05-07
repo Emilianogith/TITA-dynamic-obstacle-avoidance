@@ -1,12 +1,12 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
 import os
-
 def generate_launch_description():
 
     gains_file = os.path.join(
-        os.getenv("HOME"),
-        "Desktop/ros2_ws/src/tita_controller/config/gains.yaml"
+        get_package_share_directory("tita_controller"),
+        "config/gains.yaml"
     )
 
     return LaunchDescription([

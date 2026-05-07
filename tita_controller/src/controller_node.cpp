@@ -114,7 +114,7 @@ public:
 
         
         // ------------------ Build Pinocchio model ------------------
-        std::string robot_description_filename = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/src/tita_controller/tita_description/tita.urdf";
+        std::string robot_description_filename = std::string(std::getenv("HOME")) + "/ros2_ws/src/tita_controller/tita_description/tita.urdf";
 
         pinocchio::Model full_robot_model;
         pinocchio::JointModelFreeFlyer root_joint;
@@ -144,7 +144,7 @@ public:
 
 
         // Logging
-        std::string prefix = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/robot_logs/";
+        std::string prefix = std::string(std::getenv("HOME")) + "/ros2_ws/robot_logs/";
         std::filesystem::create_directories(prefix);
 
         // ---------- KF log ----------

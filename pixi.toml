@@ -64,11 +64,18 @@ ros-humble-ros2cli       = "*"
 ros-humble-ros2topic     = "*"
 ros-humble-ros2node      = "*"
 ros-humble-rclpy         = "*"
+ros-humble-ros2launch    = "*"
+ros-humble-launch        = "*"
+ros-humble-launch-ros    = "*"
+ros-humble-ros2run = "*"
+ros-humble-ros2pkg = "*"
 colcon-common-extensions = "*"
 
 [feature.ros.tasks]
 setup-ros-ws = { cmd = "mkdir -p $HOME/ros2_ws/src && ln -sfn $PIXI_PROJECT_ROOT/tita_controller $HOME/ros2_ws/src/tita_controller" }
-build-ros    = { cmd = "cd $HOME/ros2_ws && colcon build --symlink-install --cmake-args -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -Dpinocchio_DIR=$CONDA_PREFIX/lib/cmake/pinocchio -Dcrocoddyl_DIR=$CONDA_PREFIX/lib/cmake/crocoddyl -Dcoal_DIR=$CONDA_PREFIX/lib/cmake/coal -DCMAKE_EXE_LINKER_FLAGS='-no-pie -Wl,-rpath,$CONDA_PREFIX/lib'", depends-on = ["setup-ros-ws"] }
+build-ros    = { cmd = "cd $HOME/ros2_ws && colcon build --symlink-install --cmake-args -DCMAKE_C_COMPILER=/usr/bin/gcc -DCMAKE_CXX_COMPILER=/usr/bin/g++ -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -Dpinocchio_DIR=$CONDA_PREFIX/lib/cmake/pinocchio -Dcrocoddyl_DIR=$CONDA_PREFIX/lib/cmake/crocoddyl -Dcoal_DIR=$CONDA_PREFIX/lib/cmake/coal", depends-on = ["setup-ros-ws"] }
+launch = { cmd = "bash -c 'source ~/ros2_ws/install/setup.bash && ros2 launch tita_controller controller.launch.py'", depends-on = ["build-ros"] }
+
 [environments]
 default = { features = ["sim", "pytools"], solve-group = "default" }
 ros     = { features = ["ros"],            solve-group = "ros" }
