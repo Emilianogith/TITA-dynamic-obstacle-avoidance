@@ -13,7 +13,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 14; 
     static constexpr int NU = 9; 
-    static constexpr int T = 6;              // in sec
+    static constexpr int T = 11;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -44,7 +44,7 @@ class walkingPlanner {
     double T_const = 2 * T / 3;                // fast trajectory T = 11; T_const = 3 * T / 11;
     double T_acc   = (T - T_const) / 2;
 
-    double v_peak     = 0.0;
+    double v_peak     = 0.1;
     double omega_peak = 0.0;
 
     double a_max = v_peak / T_acc;
@@ -62,11 +62,11 @@ class walkingPlanner {
 
     double x0          = pcom(0);
     double y0          = pcom(1);
-    double z0          = pcom(2) +0.01;      // lift the robot of 1 cm 
+    double z0          = pcom(2); // +0.05;      // lift the robot of 1 cm 
     double z0_contact  = 0.0;
 
-    double z_min       = 0.25;
-    double z_max       = 0.42;
+    double z_min       = 0.20;
+    double z_max       = 0.32;
  
     double x = x0;
     double y = y0;
