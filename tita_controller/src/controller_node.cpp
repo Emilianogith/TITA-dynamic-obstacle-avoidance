@@ -187,27 +187,51 @@ public:
 
         // declare default values (used if yaml is missing)
         this->declare_parameter<std::vector<double>>(
-            "kp",
+            "kp_reg",
             std::vector<double>(8, 0.0));
 
         this->declare_parameter<std::vector<double>>(
-            "kd",
+            "kd_reg",
+            std::vector<double>(8, 0.0));
+
+        this->declare_parameter<std::vector<double>>(
+            "kp_wbc",
+            std::vector<double>(8, 0.0));
+
+        this->declare_parameter<std::vector<double>>(
+            "kd_wbc",
             std::vector<double>(8, 0.0));
 
         // read values from yaml
-        KP_gains_ = this->get_parameter("kp").as_double_array();
+        KP_reg_gains_ = this->get_parameter("kp_reg").as_double_array();
 
-        KD_gains_ = this->get_parameter("kd").as_double_array();
+        KD_reg_gains_ = this->get_parameter("kd_reg").as_double_array();
 
         // safety check
-        if (KP_gains_.size() != 8 ||
-            KD_gains_.size() != 8)
+        if (KP_reg_gains_.size() != 8 ||
+            KD_reg_gains_.size() != 8)
         {
             RCLCPP_ERROR(this->get_logger(),
-                "kp and kd must have size 8");
+                "kp_reg and kd_reg must have size 8");
 
-            KP_gains_ = std::vector<double>(8, 0.0);
-            KD_gains_ = std::vector<double>(8, 0.0);
+            KP_reg_gains_ = std::vector<double>(8, 0.0);
+            KD_reg_gains_ = std::vector<double>(8, 0.0);
+        }
+
+        // read values from yaml
+        KP_wbc_gains_ = this->get_parameter("kp_wbc").as_double_array();
+
+        KD_wbc_gains_ = this->get_parameter("kd_wbc").as_double_array();
+
+        // safety check
+        if (KP_wbc_gains_.size() != 8 ||
+            KD_wbc_gains_.size() != 8)
+        {
+            RCLCPP_ERROR(this->get_logger(),
+                "kp_wbc and kd_wbc must have size 8");
+
+            KP_wbc_gains_ = std::vector<double>(8, 0.0);
+            KD_wbc_gains_ = std::vector<double>(8, 0.0);
         }
 
         RCLCPP_INFO(this->get_logger(),
@@ -595,15 +619,6 @@ private:
          used for testing the controller and for safety when the robot is lifted off the ground*/
 
         std::array<double, 8> q_des;
-        // q_des[0] = 0.0;                 // joint_left_leg_1
-        // q_des[1] = 0.5;                 // joint_left_leg_2
-        // q_des[2] = -1.0;                // joint_left_leg_3
-        // q_des[3] = 0.1;                 // joint_left_leg_4
-        // q_des[4] = 0.0;                 // joint_right_leg_1
-        // q_des[5] = 0.5;                 // joint_right_leg_2
-        // q_des[6] = -1.0;                // joint_right_leg_3
-        // q_des[7] = 0.1;                 // joint_right_leg_4
-
         q_des[0] = 0.0;                 // joint_left_leg_1
         q_des[1] = 0.8;                 // joint_left_leg_2
         q_des[2] = -2.0;                // joint_left_leg_3
@@ -630,53 +645,8 @@ private:
             const auto& js_curr = robot_state_.joint_state[name];      
             const double vel_curr = js_curr.vel;
             const double pos_curr = js_curr.pos;
-            effort_msg.data[idx] = KP_gains_[idx] * labrob::angleError(q_des[idx], pos_curr) + KD_gains_[idx] * (qdot_des[idx] - vel_curr);
-
-            // double tau = KP_gains_[idx] * labrob::angleError(q_des[idx], pos_curr) + KD_gains_[idx] * (qdot_des[idx] - vel_curr);
-            // tau = std::clamp(tau, -5.0, 5.0);
-            // effort_msg.data[idx] = tau;
+            effort_msg.data[idx] = KP_reg_gains_[idx] * labrob::angleError(q_des[idx], pos_curr) + KD_reg_gains_[idx] * (qdot_des[idx] - vel_curr);
         }
-
-
-        // const rclcpp::Time t_now = this->now();
-        // const double t_msec = (t_now - t_for_tau_prova).seconds() * 1000;
-
-        // if (t_msec < 100){
-        //     effort_msg.data[0] = 0.0;
-        //     effort_msg.data[1] = 0.0;
-        //     effort_msg.data[2] = 0.0;
-        //     effort_msg.data[3] = 0.0;
-
-        //     effort_msg.data[4] = 0.0;
-        //     effort_msg.data[5] = 0.0;
-        //     effort_msg.data[6] = 0.0;
-        //     effort_msg.data[7] = 5.0;
-        // // }
-        // // else if (t_msec < 1000){
-        // //     effort_msg.data[0] = 0.0;
-        // //     effort_msg.data[1] = 0.0;
-        // //     effort_msg.data[2] = 0.0;
-        // //     effort_msg.data[3] = 0.0;
-
-        // //     effort_msg.data[4] = 0.0;
-        // //     effort_msg.data[5] = 0.0;
-        // //     effort_msg.data[6] = 0.0;
-        // //     effort_msg.data[7] = -0.5;
-        
-        // } else {
-        //     effort_msg.data[0] = 0.0;
-        //     effort_msg.data[1] = 0.0;
-        //     effort_msg.data[2] = 0.0;
-        //     effort_msg.data[3] = 0.0;
-
-        //     effort_msg.data[4] = 0.0;
-        //     effort_msg.data[5] = 0.0;
-        //     effort_msg.data[6] = 0.0;
-        //     effort_msg.data[7] = 0.0;
-        // }
-
-
-
     }
 
     bool fillMsgs(
@@ -717,9 +687,7 @@ private:
             }
 
             // -------------- fill the message with FF + PD low-level control law ---------------
-            effort_msg.data[idx] = u + KP_gains_[idx] * labrob::angleError(pos_des, js.pos) + KD_gains_[idx] * (vel_des - js.vel);
-    
-            // effort_msg.data[idx] = KP_gains_[idx] * labrob::angleError(pos_des, js.pos) + KD_gains_[idx] * (vel_des - js.vel);
+            effort_msg.data[idx] = u + KP_wbc_gains_[idx] * labrob::angleError(pos_des, js.pos) + KD_wbc_gains_[idx] * (vel_des - js.vel);
         }
         return true;
     }
@@ -748,45 +716,10 @@ private:
         effort_msg.data.resize(na, 0.0);
 
 
-        // std::cout << "KP gains: ";
-        // for (const auto& kp : KP_gains_) std::cout << kp << "   ";  
-        // std::cout << "KD gains: ";
-        // for (const auto& kd : KD_gains_) std::cout << kd << "   ";  
-        // std::cout << std::endl;
-
-        // std::array<double, 8> KP = {                                   
-        //         0.0, 0.0, 0.0,  0.0,                                   
-        //         0.0, 0.0, 0.0, 0.0                                   
-        //     };                                   
-                                            
-        // std::array<double, 8> KD = {              
-        //         0.0, 0.0, 0.0,  0.0,              
-        //         0.0, 0.0, 0.0,  0.4              
-        //     }; 
-
-
-        // low-level gains (della prima volta)
-        // std::array<double, 8> KP = {                                            // std::array<double, 8> KP = {
-        //         10.0, 10.0, 10.0,  0.8,                                         //         40.0, 40.0, 40.0,  0.8,
-        //         10.0, 10.0, 10.0,  0.8                                          //         40.0, 40.0, 40.0,  0.8
-        //     };                                                                  //     };
-                                            
-        // std::array<double, 8> KD = {                                            // std::array<double, 8> KD = {
-        //         0.2, 0.2, 0.2,  0.1,                                            //         1.5, 1.5, 1.5,  0.1,
-        //         0.2, 0.2, 0.2,  0.1                                             //         1.5, 1.5, 1.5,  0.1
-        //     };                                                                  //     };
-
-            
-
         // ------------ Control mode selection ------------
         switch (control_mode_)
         {
             case REGULATION:
-
-                if (!initialized_regulation){
-                    t_for_tau_prova = this->now();
-                    initialized_regulation = true;
-                }
                 regulate_robot(effort_msg);
                 break;
 
@@ -959,10 +892,6 @@ private:
     rclcpp::Time t_prev_;
     rclcpp::Time t_prev_joint_msg_;
     double nominal_dt_ = 0.002;                             // controller nominal period
-    
-
-    rclcpp::Time t_for_tau_prova;
-    bool initialized_regulation = false;
 
 
 
@@ -994,8 +923,11 @@ private:
 
     std::ofstream tau_commanded;
 
-    std::vector<double> KP_gains_;
-    std::vector<double> KD_gains_;
+    std::vector<double> KP_reg_gains_;
+    std::vector<double> KD_reg_gains_;
+
+    std::vector<double> KP_wbc_gains_;
+    std::vector<double> KD_wbc_gains_;
 
 
 };
