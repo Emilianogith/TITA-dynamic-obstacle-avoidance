@@ -26,7 +26,7 @@ class WalkingManager {
       double t_msec_
   );
 
-  void save_data();
+  void save_data(const std::string& log_directory);
   
   labrob::DesiredConfiguration des_configuration_;
   

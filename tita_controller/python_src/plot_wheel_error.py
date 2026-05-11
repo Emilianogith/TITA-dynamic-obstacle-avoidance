@@ -6,13 +6,20 @@ import numpy as np
 
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"
+
+
+
 # ---------- Arguments ----------
-log_path = Path.home() / "Desktop/ros2_ws/robot_logs/joint_state_log.txt"
 parser = argparse.ArgumentParser(description="Plot joint position, velocity, and effort from log")
 parser.add_argument("joint_name", type=str,
                     help="Joint name to plot (e.g. joint_right_leg_4)")
 parser.add_argument("--file", type=str,
-                    default=log_path,
+                    default=JOINT_STATE_LOG,
                     help="Path to log file")
 args = parser.parse_args()
 

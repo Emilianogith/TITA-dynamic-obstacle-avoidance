@@ -4,8 +4,19 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # ==== SETTINGS ====
-X_PATH = Path("/tmp/plan/x.txt")   # <-- change if needed
-JUMP_PATH = Path("/tmp/plan/jump_traj.txt")
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+X_PATH = ROBOT_LOGS / "plan/x.txt"
+JUMP_PATH = ROBOT_LOGS / "jump_traj.txt"
+
+
+
+# X_PATH = Path("/tmp/plan/x.txt")   # <-- change if needed
+# JUMP_PATH = Path("/tmp/plan/jump_traj.txt")
 
 DT_MS = 2
 NX = 14

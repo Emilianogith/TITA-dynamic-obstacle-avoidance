@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <fstream>
+#include <filesystem>
+
 
 #include <Eigen/Dense>
 
@@ -13,7 +15,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 14; 
     static constexpr int NU = 9; 
-    static constexpr int T = 11;              // in sec
+    static constexpr int T = 15;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -44,7 +46,7 @@ class walkingPlanner {
     double T_const = 2 * T / 3;                // fast trajectory T = 11; T_const = 3 * T / 11;
     double T_acc   = (T - T_const) / 2;
 
-    double v_peak     = 0.1;
+    double v_peak     = 0.0;
     double omega_peak = 0.0;
 
     double a_max = v_peak / T_acc;
@@ -62,7 +64,7 @@ class walkingPlanner {
 
     double x0          = pcom(0);
     double y0          = pcom(1);
-    double z0          = pcom(2); // +0.05;      // lift the robot of 1 cm 
+    double z0          = pcom(2) +0.01;      // lift the robot of 1 cm 
     double z0_contact  = 0.0;
 
     double z_min       = 0.20;
@@ -178,20 +180,30 @@ class walkingPlanner {
 
 
     if (log_plan_){
-      // create folder if it does not exist
-      std::string folder = "/tmp/plan/" ;
-      std::string command = "mkdir -p " + folder;
-      const int ret = std::system(command.c_str());
-      (void)ret;
 
-      // print trajectory to file
-      std::string path_x = "/tmp/plan/x.txt";
+      namespace fs = std::filesystem;
+      fs::path script_dir = fs::path(__FILE__).parent_path();
+
+      fs::path ws_path = fs::path(__FILE__)
+        .parent_path()   // include
+        .parent_path()   // tita_controller
+        .parent_path()   // src
+        .parent_path();   // src
+
+      fs::path folder = ws_path / "robot_logs" / "plan";
+
+      fs::create_directories(folder);
+
+      fs::path path_x = folder / "x.txt";
+      fs::path path_u = folder / "u.txt";
+
+
       std::ofstream file_x(path_x);
       for (int i = 0; i < N_STEP_; ++i) {
         file_x << x_ref.col(i).transpose() << std::endl;
       }
       file_x.close();
-      std::string path_u = "/tmp/plan/u.txt";
+
       std::ofstream file_u(path_u);
       for (int i = 0; i < N_STEP_ - 1; ++i) {
         file_u << u_ref.col(i).transpose() << std::endl;
@@ -316,8 +328,13 @@ class walkingPlanner {
 
 
     if (log_plan_){
-      // print trajectory to file
-      std::string path_jump = "/tmp/plan/jump_traj.txt";
+
+      namespace fs = std::filesystem;
+      fs::path script_dir = fs::path(__FILE__).parent_path();
+      fs::path folder = script_dir / "plan";
+      fs::create_directories(folder);
+      fs::path path_jump = folder / "jump_traj.txt";
+
       std::ofstream file_jump(path_jump);
       file_jump << t_msec << " index " << current_time_step << std::endl;
       for (int i = 0; i < N_STEP_JUMP; ++i) {

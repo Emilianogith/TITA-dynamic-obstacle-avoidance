@@ -4,7 +4,13 @@ from matplotlib.animation import FuncAnimation
 from pathlib import Path
 
 # ==== SETTINGS ====
-BASE_DIR = Path("/tmp/mpc_data")
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+BASE_DIR = ROBOT_LOGS / "mpc_data"
+
 X_FILE = "x.txt"
 U_FILE = "u.txt"
 

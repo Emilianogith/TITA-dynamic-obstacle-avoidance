@@ -2,6 +2,14 @@ import re
 import sys
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+TAU_COMMANDED_PATH = ROBOT_LOGS / "tau_commanded.txt"
+JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"
 
 # --------- CHECK ARGUMENT ---------
 if len(sys.argv) != 2:
@@ -10,13 +18,11 @@ if len(sys.argv) != 2:
 
 joint_to_plot = sys.argv[1]
 
-tau_file = "/tmp/tau_commanded.txt"
-state_file = "/home/emiliano/Desktop/ros2_ws/robot_logs/joint_state_log.txt"
 
 # --------- GET FIRST JOINT STATE TIMESTAMP ---------
 t0_state = None
 
-with open(state_file, "r") as f:
+with open(JOINT_STATE_LOG, "r") as f:
     for line in f:
         match = re.match(r"\d+\.\d+\s+(\d+\.\d+)", line)
         if match:
@@ -35,7 +41,7 @@ tau_data = defaultdict(lambda: {
     "tau_cmd": []
 })
 
-with open(tau_file, "r") as f:
+with open(TAU_COMMANDED_PATH, "r") as f:
     current_time = None
 
     for line in f:
@@ -69,7 +75,7 @@ with open(tau_file, "r") as f:
 # --------- PARSE JOINT STATE ---------
 state_data = defaultdict(lambda: {"t": [], "vel": [], "tau": []})
 
-with open(state_file, "r") as f:
+with open(JOINT_STATE_LOG, "r") as f:
     for line in f:
         match = re.search(
             r"\d+\.\d+\s+(\d+\.\d+)\s+(joint_\w+):.*vel:\s+([-\d\.eE]+)\s+effort:\s+([-\d\.eE]+)",

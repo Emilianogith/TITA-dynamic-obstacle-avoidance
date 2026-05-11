@@ -12,6 +12,7 @@
 
 #include <fstream>
 #include <iomanip> 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <filesystem>
 #include <unordered_map>
 #include <Eigen/Core>
@@ -113,9 +114,22 @@ public:
 
 
         
-        // ------------------ Build Pinocchio model ------------------
-        std::string robot_description_filename = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/src/tita_controller/tita_description/tita.urdf";
+                    
+        // get workspace path
+        std::string package_path = ament_index_cpp::get_package_share_directory("tita_controller");
+        
+        std::filesystem::path ws_path =std::filesystem::path(package_path)
+            .parent_path()   // share
+            .parent_path()   // tita_controller
+            .parent_path()   // install
+            .parent_path();  // ros2_ws
 
+        log_path_ = std::string(ws_path / "robot_logs");
+        auto robot_description_filename = std::string(ws_path / "src/tita_controller/tita_description/tita.urdf");
+
+
+
+        // ------------------ Build Pinocchio model ------------------
         pinocchio::Model full_robot_model;
         pinocchio::JointModelFreeFlyer root_joint;
         pinocchio::urdf::buildModel(robot_description_filename, root_joint, full_robot_model);
@@ -144,11 +158,10 @@ public:
 
 
         // Logging
-        std::string prefix = std::string(std::getenv("HOME")) + "/Desktop/ros2_ws/robot_logs/";
-        std::filesystem::create_directories(prefix);
+        std::filesystem::create_directories(log_path_);
 
         // ---------- KF log ----------
-        csv.open(prefix + "kf_test.csv");
+        csv.open(log_path_ + "/kf_test.csv");
         csv << "t,"
             << "p_odom_x,p_odom_y,p_odom_z,"
             << "qx,qy,qz,qw,"
@@ -158,7 +171,7 @@ public:
             << "p_cR_est_x,p_cR_est_y,p_cR_est_z\n";
 
         // ---------- Robot odometry log ----------
-        robot_odom_log.open(prefix + "robot_odom.csv");
+        robot_odom_log.open(log_path_ + "/robot_odom.csv");
         robot_odom_log << "t,"
             << "p_odom_x,p_odom_y,p_odom_z,"
             << "v_odom_x,v_odom_y,v_odom_z,"
@@ -168,18 +181,18 @@ public:
             << "w_l_odom,w_r_odom\n";
 
         // ---------- Wheel log ----------
-        // wheel_log_.open(prefix + "wheel_log.txt");
+        // wheel_log_.open(log_path_ + "wheel_log.txt");
         // wheel_log_ << "Timestamp, Joint Name, Position, Velocity, Velocity Difference, filter position, filter velocity\n";
 
         // ---------- Other logs ----------
-        odom_log_.open(prefix + "odom.txt");
-        imu_log_.open(prefix + "imu_log.txt");
-        joint_state_log_.open(prefix + "joint_state_log.txt");
+        odom_log_.open(log_path_ + "/odom.txt");
+        imu_log_.open(log_path_ + "/imu_log.txt");
+        joint_state_log_.open(log_path_ + "/joint_state_log.txt");
 
         // ---------- Joint effort log ----------
-        joint_eff_log_file_.open("/tmp/joint_eff.txt");
+        joint_eff_log_file_.open(log_path_ + "/joint_eff.txt");
         
-        tau_commanded.open("/tmp/tau_commanded.txt");
+        tau_commanded.open(log_path_ + "/tau_commanded.txt");
 
 
 
@@ -703,7 +716,7 @@ private:
             // save logs (if any)
             if (initialized_walking_manager_) 
             {
-                walking_manager_.save_data();
+                walking_manager_.save_data(log_path_);
                 initialized_walking_manager_ = !initialized_walking_manager_;
             }
             return;
@@ -913,6 +926,8 @@ private:
     // std::shared_ptr<labrob::wheel_KF>  wheel_filter_ptr_;
 
     // log files
+    std::string log_path_;
+
     std::ofstream odom_log_;
     std::ofstream imu_log_;
     std::ofstream joint_state_log_;

@@ -1,12 +1,18 @@
+from pathlib import Path
 import matplotlib.pyplot as plt
 
-file_path = "/tmp/timing_log.txt"   # change if needed
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+TIMING_LOG = ROBOT_LOGS / "timing_log.txt"
+
 
 time_mpc = []
 time_wbc = []
 time_total = []
 
-with open(file_path, "r") as f:
+with open(TIMING_LOG, "r") as f:
     lines = f.readlines()
 
 # skip header

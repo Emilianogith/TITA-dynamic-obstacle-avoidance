@@ -3,11 +3,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# -----------------------------
-# Read log file
-# -----------------------------
-log_file = Path.home() / "Desktop/ros2_ws/robot_logs/wheel_log.txt"
-with open(log_file, "r") as f:
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+WHEEL_LOG_PATH = ROBOT_LOGS / "wheel_log.txt"
+
+
+with open(WHEEL_LOG_PATH, "r") as f:
     lines = f.readlines()
 
 # Regex to capture all fields
