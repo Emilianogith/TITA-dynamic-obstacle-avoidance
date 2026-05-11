@@ -2,8 +2,9 @@
 """
 Generalized plotting script for TITA controller logs.
 
-All plots are saved to images/ (organised in subdirectories).
-Run with --help to see available options.
+By default every group is saved to images/ (organised in subdirectories).
+Pass --show-<group> to open that group in interactive windows instead of
+saving — you can zoom, pan, and inspect values.  Multiple flags are allowed.
 
 Plots produced (each skipped gracefully if the source file is missing):
   encoder_wheels/    wheel_log.txt
@@ -22,13 +23,21 @@ Plots produced (each skipped gracefully if the source file is missing):
 """
 
 import argparse
-import os
 import re
 import sys
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')
+
+# ---------------------------------------------------------------------------
+# Determine which groups to show interactively — must happen before pyplot
+# import so that matplotlib.use('Agg') is called at the right time.
+# ---------------------------------------------------------------------------
+_ALL_GROUPS = {'encoder', 'estimation', 'imu', 'odom', 'plan', 'timings', 'wbc', 'mpc', 'joints'}
+_SHOW = {g for g in _ALL_GROUPS if f'--show-{g}' in sys.argv}
+if not _SHOW:
+    matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 from pathlib import Path
 from collections import defaultdict
@@ -67,7 +76,11 @@ OUT_DIR = Path(__file__).parent / 'images'
 # Helpers
 # ---------------------------------------------------------------------------
 
-def save(fig, *parts: str) -> None:
+def save(fig, group: str, *parts: str) -> None:
+    """Save fig to images/<parts> or, if group is in _SHOW, keep it open."""
+    if group in _SHOW:
+        print(f'  queued {"/".join(parts)}')
+        return  # leave fig open; plt.show() at the end renders all
     path = OUT_DIR.joinpath(*parts)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches='tight')
@@ -162,7 +175,7 @@ def plot_encoder_wheels(log_dir: Path) -> None:
             ax.legend(fontsize=7)
 
     fig.tight_layout()
-    save(fig, 'encoder_wheels', 'wheel_data.png')
+    save(fig, 'encoder', 'encoder_wheels', 'wheel_data.png')
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +204,7 @@ def plot_estimation(log_dir: Path) -> None:
     ax.set_xlabel('Time [s]'); ax.set_ylabel('Position [m]')
     ax.set_title('Odometry vs Estimated Base Position'); ax.legend(ncol=2)
     fig.tight_layout()
-    save(fig, 'estimation', 'odom_vs_est_position.png')
+    save(fig, 'none', 'estimation', 'odom_vs_est_position.png')
 
     # --- XY Position Error (norm) ---
     pos_err = np.sqrt((df['p_est_x'] - df['p_odom_x'])**2 +
@@ -201,7 +214,7 @@ def plot_estimation(log_dir: Path) -> None:
     ax.set_xlabel('Time [s]'); ax.set_ylabel('‖error‖ [m]')
     ax.set_title('Base XY Position: ‖Estimate − Odometry‖')
     fig.tight_layout()
-    save(fig, 'estimation', 'position_error.png')
+    save(fig, 'none', 'estimation', 'position_error.png')
 
     # --- Velocity estimate ---
     fig, ax = plt.subplots(figsize=(13, 5))
@@ -210,7 +223,7 @@ def plot_estimation(log_dir: Path) -> None:
     ax.set_xlabel('Time [s]'); ax.set_ylabel('Velocity [m/s]')
     ax.set_title('Estimated Base Velocity')
     fig.tight_layout()
-    save(fig, 'estimation', 'velocity.png')
+    save(fig, 'none', 'estimation', 'velocity.png')
 
     # --- Contact points ---
     fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
@@ -223,7 +236,7 @@ def plot_estimation(log_dir: Path) -> None:
         ax.set_ylabel('Position [m]'); ax.set_title(f'{side} Contact Point')
     axes[-1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'estimation', 'contact_points.png')
+    save(fig, 'none', 'estimation', 'contact_points.png')
 
     # --- XY Trajectory (top view) ---
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -235,7 +248,7 @@ def plot_estimation(log_dir: Path) -> None:
     ax.set_title('XY Trajectories (Top View)')
     ax.set_aspect('equal'); ax.legend()
     fig.tight_layout()
-    save(fig, 'estimation', 'xy_trajectory.png')
+    save(fig, 'none', 'estimation', 'xy_trajectory.png')
 
     # --- Filter analysis (6-panel) ---
     px = df['p_est_x'].values; py = df['p_est_y'].values; pz = df['p_est_z'].values
@@ -245,11 +258,6 @@ def plot_estimation(log_dir: Path) -> None:
     fig, axes = plt.subplots(3, 2, figsize=(16, 12), sharex=True)
     fig.suptitle('State Estimation — Filter Analysis', fontsize=13)
 
-    xyz_panels = [
-        (axes[0, 0], px, py, pz,
-         df['p_cL_est_x'].values, df['p_cL_est_y'].values, df['p_cL_est_z'].values,
-         'Base Position Estimate', 'Position [m]'),
-    ]
     def _panel(ax, x, y, z, title, ylabel):
         _xyz_lines(ax, t, x, y, z)
         ax.set_title(title); ax.set_ylabel(ylabel)
@@ -284,7 +292,7 @@ def plot_estimation(log_dir: Path) -> None:
 
     axes[2, 0].set_xlabel('Time [s]'); axes[2, 1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'estimation', 'filter_analysis.png')
+    save(fig, 'estimation', 'estimation', 'filter_analysis.png')
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +347,7 @@ def plot_imu(log_dir: Path) -> None:
 
     axs[2, 0].set_xlabel('Time [s]'); axs[2, 1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'imu', 'imu_data.png')
+    save(fig, 'imu', 'imu', 'imu_data.png')
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +400,7 @@ def plot_odom(log_dir: Path) -> None:
 
     axs[2, 0].set_xlabel('Time [s]'); axs[2, 1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'odometry', 'simple_odom.png')
+    save(fig, 'odom', 'odometry', 'simple_odom.png')
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +456,7 @@ def plot_robot_odometry(log_dir: Path) -> None:
         ax.set_visible(False)
     axes[2, 0].set_xlabel('Time [s]'); axes[2, 1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'odometry', 'robot_odom.png')
+    save(fig, 'odom', 'odometry', 'robot_odom.png')
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +502,7 @@ def plot_plan(tmp_dir: Path) -> None:
     ax1.plot(t_ms, c_z,    '--', color=CB[1], lw=2, label='c z')
     ax1.set_xlabel('t [ms]'); ax1.set_ylabel('z [m]')
     ax1.set_title('Z Reference Plan'); ax1.legend()
-    save(fig, 'plan', 'reference_plan.png')
+    save(fig, 'plan', 'plan', 'reference_plan.png')
 
     jump_path = tmp_dir / 'plan' / 'jump_traj.txt'
     if jump_path.exists():
@@ -507,7 +515,7 @@ def plot_plan(tmp_dir: Path) -> None:
         ax_j.plot(t_j, x_j[:, 8], '--', color=CB[1], lw=2, label='c z')
         ax_j.set_xlabel('t [ms]'); ax_j.set_ylabel('z [m]')
         ax_j.set_title('Jump Trajectory Z Plan'); ax_j.legend()
-        save(fig_j, 'plan', 'jump_z.png')
+        save(fig_j, 'plan', 'plan', 'jump_z.png')
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +556,7 @@ def plot_timings(tmp_dir: Path) -> None:
     ax.set_xlabel('Control cycle'); ax.set_ylabel('Time [µs]')
     ax.set_title('Controller Timing'); ax.legend(ncol=2)
     fig.tight_layout()
-    save(fig, 'timings', 'controller_timing.png')
+    save(fig, 'timings', 'timings', 'controller_timing.png')
 
 
 # ---------------------------------------------------------------------------
@@ -580,7 +588,7 @@ def plot_wbc_tracking(tmp_dir: Path) -> None:
         ax.set_ylabel('Error [m]'); ax.set_title(title); ax.legend()
     axs[-1].set_xlabel('Time [ms]')
     plt.subplots_adjust(hspace=0.35)
-    save(fig, 'wbc', 'tracking_errors.png')
+    save(fig, 'wbc', 'wbc', 'tracking_errors.png')
 
     plan_file = tmp_dir / 'plan' / 'x.txt'
     if plan_file.exists():
@@ -603,7 +611,7 @@ def plot_wbc_tracking(tmp_dir: Path) -> None:
             ax.set_title(f'CoM {lbl} error (reference − current)')
         axs2[-1].set_xlabel('Time [ms]')
         plt.subplots_adjust(hspace=0.35)
-        save(fig2, 'wbc', 'reference_plan_errors.png')
+        save(fig2, 'wbc', 'wbc', 'reference_plan_errors.png')
 
 
 # ---------------------------------------------------------------------------
@@ -644,7 +652,7 @@ def plot_mpc_snapshot(tmp_dir: Path, t_msec: float) -> None:
     axs[-1].set_xlabel('Prediction step')
 
     fig.tight_layout()
-    save(fig, 'mpc', f'snapshot_{t_msec:.3f}.png')
+    save(fig, 'mpc', 'mpc', f'snapshot_{t_msec:.3f}.png')
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +680,7 @@ def plot_joint_tau(tmp_dir: Path) -> None:
         ax.set_xlabel('Control cycle'); ax.set_ylabel(ylabel)
         ax.set_title(title); ax.legend(ncol=max(1, n_joints // 4))
         fig.tight_layout()
-        save(fig, 'joints', subdir, fname.replace('.txt', '.png'))
+        save(fig, 'joints', 'joints', subdir, fname.replace('.txt', '.png'))
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +731,7 @@ def plot_joint_state(log_dir: Path, joint_names: list) -> None:
             ax.set_ylabel(ylabel); ax.set_title(title); ax.legend()
         axs[-1].set_xlabel('Time [s]')
         fig.tight_layout()
-        save(fig, 'joints', 'state', f'{joint}.png')
+        save(fig, 'joints', 'joints', 'state', f'{joint}.png')
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +777,7 @@ def plot_numeric_derivative(log_dir: Path, joint_names: list) -> None:
             ax.set_ylabel(ylabel); ax.set_title(title); ax.legend()
         axs[-1].set_xlabel('Time [s]')
         fig.tight_layout()
-        save(fig, 'joints', 'numeric_derivative', f'{joint}.png')
+        save(fig, 'joints', 'joints', 'numeric_derivative', f'{joint}.png')
 
 
 # ---------------------------------------------------------------------------
@@ -849,7 +857,7 @@ def plot_tau_velocity(log_dir: Path, joint_names: list) -> None:
             axs[1].plot(state_d['t'], state_d['tau'], color=CB[3], label='tau measured')
         axs[1].set_xlabel('Time [s]'); axs[1].set_ylabel('Torque [Nm]'); axs[1].legend()
         fig.tight_layout()
-        save(fig, 'joints', 'tau_velocity', f'{joint}.png')
+        save(fig, 'joints', 'joints', 'tau_velocity', f'{joint}.png')
 
 
 # ---------------------------------------------------------------------------
@@ -861,8 +869,11 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(
         description=(
-            'Generate all TITA controller plots and save them to images/.\n'
-            'Files that do not exist are skipped with a warning.'
+            'Generate TITA controller plots.\n'
+            'Default: save every group to images/.\n'
+            'Pass --show-<group> to open that group interactively instead '
+            '(enables zooming/panning); other groups still save normally.\n'
+            'Multiple --show-* flags are allowed.'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -878,13 +889,20 @@ def main() -> None:
                         help='MPC snapshot timestep (ms) — enables mpc group')
     parser.add_argument('--only', nargs='+', default=None,
                         metavar='GROUP',
-                        help=(
-                            'Run only the listed groups.  Choices: '
-                            'encoder estimation imu odom plan timings wbc mpc joints'
-                        ))
+                        help='Run only the listed groups: '
+                             'encoder estimation imu odom plan timings wbc mpc joints')
+
+    show_group = parser.add_argument_group(
+        'interactive display (show instead of save)'
+    )
+    for g in sorted(_ALL_GROUPS):
+        show_group.add_argument(f'--show-{g}', action='store_true',
+                                help=f'Show {g} plots interactively')
+
     args = parser.parse_args()
 
-    only = set(args.only) if args.only else None
+    # If --show-X flags are given without --only, restrict execution to those groups only.
+    only = set(args.only) if args.only else (_SHOW if _SHOW else None)
 
     def run(group: str, fn, *a, **kw) -> None:
         if only and group not in only:
@@ -910,7 +928,15 @@ def main() -> None:
     if args.mpc_t is not None:
         run('mpc',    plot_mpc_snapshot,        args.tmp_dir, args.mpc_t)
 
-    print(f'\nDone.  All images saved under  {OUT_DIR.relative_to(OUT_DIR.parent.parent)}/')
+    if _SHOW:
+        shown = ', '.join(sorted(_SHOW))
+        print(f'\nOpening interactive windows for: {shown}')
+        print('Close all windows to exit.')
+        plt.show()
+
+    saved = _ALL_GROUPS - _SHOW
+    if saved and not only:
+        print(f'\nImages saved under  {OUT_DIR.relative_to(OUT_DIR.parent.parent)}/')
 
 
 if __name__ == '__main__':
