@@ -45,7 +45,7 @@ def plot_single_xyz(ax, t, x, y, z, title, ylabel=""):
 
 def main():
     parser = argparse.ArgumentParser()
-    file_path = Path.home() / "Desktop/ros2_ws/robot_logs/kf_test.csv"
+    file_path = Path.home() / "ros2_ws/robot_logs/kf_test.csv"
     parser.add_argument("--file", default=file_path)
     args = parser.parse_args()
 

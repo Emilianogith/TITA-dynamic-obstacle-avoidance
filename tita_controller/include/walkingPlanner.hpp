@@ -44,7 +44,7 @@ class walkingPlanner {
     double T_const = 2 * T / 3;                // fast trajectory T = 11; T_const = 3 * T / 11;
     double T_acc   = (T - T_const) / 2;
 
-    double v_peak     = 0.1;
+    double v_peak     = 0.0;
     double omega_peak = 0.0;
 
     double a_max = v_peak / T_acc;
@@ -62,7 +62,7 @@ class walkingPlanner {
 
     double x0          = pcom(0);
     double y0          = pcom(1);
-    double z0          = pcom(2); // +0.05;      // lift the robot of 1 cm 
+    double z0          = pcom(2) +0.01;      // lift the robot of 1 cm 
     double z0_contact  = 0.0;
 
     double z_min       = 0.20;
