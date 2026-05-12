@@ -4,5 +4,6 @@
 **/.vscode
 images/
 venv/
+tita_controller/python_src/images/
 .pixi/*
 !.pixi/config.toml
