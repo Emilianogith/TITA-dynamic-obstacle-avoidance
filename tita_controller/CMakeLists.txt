@@ -130,29 +130,31 @@ std_srvs
 
 
 # sim controller node
-add_executable(sim_controller_node src/controller_node_sim.cpp)
+# add_executable(sim_controller_node src/controller_node_sim.cpp)
 
-target_link_libraries(sim_controller_node 
-  glfw
-  mujoco::mujoco
-  UtilsLib
-)
+# target_link_libraries(sim_controller_node 
+#   glfw
+#   mujoco::mujoco
+#   UtilsLib
+# )
 
-target_include_directories(sim_controller_node 
- PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+# target_include_directories(sim_controller_node 
+#  PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/include
+# )
 
-ament_target_dependencies(sim_controller_node 
-rclcpp 
-std_msgs
-nav_msgs
-sensor_msgs
-tf2
-tf2_ros
-geometry_msgs
-std_srvs
-)
+# ament_target_dependencies(sim_controller_node 
+# rclcpp 
+# std_msgs
+# nav_msgs
+# sensor_msgs
+# tf2
+# tf2_ros
+# geometry_msgs
+# std_srvs
+# )
+
+
 
 
 
@@ -160,7 +162,6 @@ std_srvs
 install(TARGETS
   topic_reader
   controller_node
-  sim_controller_node
   robot_simulator
   controller_manager
   DESTINATION lib/${PROJECT_NAME})

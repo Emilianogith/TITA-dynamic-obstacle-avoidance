@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 import matplotlib.pyplot as plt
 import argparse
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+TAU_COMMANDED_PATH = ROBOT_LOGS / "tau_commanded.txt"
+JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"
 
 # -----------------------------
 # ARGUMENT PARSER
@@ -30,11 +38,7 @@ if joint_name not in joint_order:
 
 joint_idx = joint_order.index(joint_name) + 1  # +1 because column 0 = time
 
-# -----------------------------
-# FILE PATHS
-# -----------------------------
-tau_cmd_file = "/tmp/tau_commanded.txt"
-tau_rec_file = "/home/emiliano/Desktop/ros2_ws/robot_logs/joint_state_log.txt"
+
 
 # -----------------------------
 # LOAD TAU SENT
@@ -42,7 +46,7 @@ tau_rec_file = "/home/emiliano/Desktop/ros2_ws/robot_logs/joint_state_log.txt"
 t_cmd = []
 tau_cmd = []
 
-with open(tau_cmd_file, "r") as f:
+with open(TAU_COMMANDED_PATH, "r") as f:
     for line in f:
         parts = line.strip().split()
         if len(parts) <= joint_idx:
@@ -63,7 +67,7 @@ if not t_cmd:
 t_rec = []
 tau_rec = []
 
-with open(tau_rec_file, "r") as f:
+with open(JOINT_STATE_LOG, "r") as f:
     for line in f:
         line = line.strip()
         if "--------------------------------" in line:

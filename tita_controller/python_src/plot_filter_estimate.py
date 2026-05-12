@@ -15,6 +15,16 @@ import argparse
 import numpy as np
 from pathlib import Path
 
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+FILTER_PATH = ROBOT_LOGS / "kf_test.csv"
+
+
+
 def quat_to_rpy(qx, qy, qz, qw):
     """Convert quaternions to roll, pitch, yaw (XYZ convention)."""
     # roll (x-axis rotation)
@@ -45,7 +55,7 @@ def plot_single_xyz(ax, t, x, y, z, title, ylabel=""):
 
 def main():
     parser = argparse.ArgumentParser()
-    file_path = Path.home() / "ros2_ws/robot_logs/kf_test.csv"
+    file_path = FILTER_PATH
     parser.add_argument("--file", default=file_path)
     args = parser.parse_args()
 

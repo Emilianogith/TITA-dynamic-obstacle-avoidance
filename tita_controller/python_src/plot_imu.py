@@ -6,6 +6,16 @@ import numpy as np
 
 from pathlib import Path
 
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+IMU_PATH = ROBOT_LOGS / "imu_log.txt"
+
+
+
 timestamps = []
 wx, wy, wz = [], [], []
 ax, ay, az = [], [], []
@@ -16,8 +26,7 @@ ang_vel_re = re.compile(r"angular_velocity:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]
 lin_acc_re = re.compile(r"linear_acceleration:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)")
 
 # Read log file
-log_path = Path.home() / "Desktop/ros2_ws/robot_logs/imu_log.txt"
-with open(log_path, "r") as f:
+with open(IMU_PATH, "r") as f:
     for line in f:
         ts_match = timestamp_re.search(line)
         if not ts_match:

@@ -1,10 +1,19 @@
+from pathlib import Path
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+
+WBC_PATH = ROBOT_LOGS / "wbc_log.txt"
+JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"
+
 # PLOT DES COM vs DESIRED 
 # Load CSV, skip header row
-log_data = np.loadtxt("/tmp/wbc_log.txt", delimiter=",", skiprows=1)
+log_data = np.loadtxt(WBC_PATH, delimiter=",", skiprows=1)
 
 # Extract columns (based on your file)
 t_ms  = log_data[:, 0]     # time in ms

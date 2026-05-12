@@ -425,8 +425,8 @@ void WalkingManager::update(
 
 }
 
-void WalkingManager::save_data(){
-    logger_.save_log_data();
+void WalkingManager::save_data(const std::string& log_directory){
+    logger_.save_log_data(log_directory);
 }
 
 
