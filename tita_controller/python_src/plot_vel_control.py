@@ -6,7 +6,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+ROBOT_LOGS = Path('robot_logs').resolve()
 
 TAU_COMMANDED_PATH = ROBOT_LOGS / "tau_commanded.txt"
 JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"

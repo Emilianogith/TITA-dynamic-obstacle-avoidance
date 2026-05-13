@@ -127,7 +127,7 @@ public:
         log_path_ = std::string(ws_path / "robot_logs");
         auto robot_description_filename = std::string(ws_path / "src/tita_controller/tita_description/tita.urdf");
         // ------------------ Build Pinocchio model ------------------
-        std::string robot_description_filename = std::string(std::getenv("HOME")) + "/ros2_ws/src/tita_controller/tita_description/tita.urdf";
+        // std::string robot_description_filename = std::string(std::getenv("HOME")) + "/ros2_ws/src/tita_controller/tita_description/tita.urdf";
 
 
 

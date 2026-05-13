@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+ROBOT_LOGS = Path('robot_logs').resolve()
 
 WBC_PATH = ROBOT_LOGS / "wbc_log.txt"
 JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"

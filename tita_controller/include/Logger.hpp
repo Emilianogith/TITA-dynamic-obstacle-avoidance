@@ -13,32 +13,57 @@
 
 namespace labrob {
 
+struct GenericTask {
+    
+    double px = 0.0;
+    double py = 0.0;
+    double pz = 0.0;
+
+    double px_des = 0.0;
+    double py_des = 0.0;
+    double pz_des = 0.0;
+
+    double vx = 0.0;
+    double vy = 0.0;
+    double vz = 0.0;
+
+    double vx_des = 0.0;
+    double vy_des = 0.0;
+    double vz_des = 0.0;
+
+    double ax_des = 0.0;
+    double ay_des = 0.0;
+    double az_des = 0.0;
+}
+
+struct JointData {
+    double pos = 0.0;
+    double vel = 0.0;
+    double torque = 0.0;
+}
+
 struct WBCEntry {
     double time_ms = 0.0;
 
-    double com_x = 0.0;
-    double com_y = 0.0;
-    double com_z = 0.0;
+    GenericTask com;
+    GenericTask wheel_l;
+    GenericTask wheel_r;
+};
 
-    double com_x_des = 0.0;
-    double com_y_des = 0.0;
-    double com_z_des = 0.0;
+struct WBCSolution {
+    double time_ms = 0.0;
 
-    double wheel_l_x = 0.0;
-    double wheel_l_y = 0.0;
-    double wheel_l_z = 0.0;
+    JointData joint1;
+    JointData joint2;
+    JointData joint3;
+    JointData joint4;
+    JointData joint5;
+    JointData joint6;
+    JointData joint7;
+    JointData joint8;
 
-    double wheel_l_x_des = 0.0;
-    double wheel_l_y_des = 0.0;
-    double wheel_l_z_des = 0.0;
-
-    double wheel_r_x = 0.0;
-    double wheel_r_y = 0.0;
-    double wheel_r_z = 0.0;
-
-    double wheel_r_x_des = 0.0;
-    double wheel_r_y_des = 0.0;
-    double wheel_r_z_des = 0.0;
+    // aggiungi contct forces, ma non si sa il numero esatto, dipende dai contatti
+    
 };
 
 struct MPCEntry {

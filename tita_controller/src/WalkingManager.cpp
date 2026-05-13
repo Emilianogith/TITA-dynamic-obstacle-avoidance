@@ -371,31 +371,97 @@ void WalkingManager::update(
 
     // log WBC data
     labrob::WBCEntry wbc_entry;
+    labrob::WBCSolution wbc_solution;
     wbc_entry.time_ms = t_msec_;
 
-    wbc_entry.com_x = p_CoM(0); 
-    wbc_entry.com_y = p_CoM(1); 
-    wbc_entry.com_z = p_CoM(2);
+    wbc_entry.com.px = p_CoM(0); 
+    wbc_entry.com.py = p_CoM(1); 
+    wbc_entry.com.pz = p_CoM(2);
 
-    wbc_entry.com_x_des = des_configuration_.com.pos(0); 
-    wbc_entry.com_y_des = des_configuration_.com.pos(1); 
-    wbc_entry.com_z_des = des_configuration_.com.pos(2);
+    wbc_entry.com.px_des = des_configuration_.com.pos(0); 
+    wbc_entry.com.py_des = des_configuration_.com.pos(1); 
+    wbc_entry.com.pz_des = des_configuration_.com.pos(2);
 
-    wbc_entry.wheel_l_x = l_wheel_center.translation()(0);
-    wbc_entry.wheel_l_y = l_wheel_center.translation()(1);
-    wbc_entry.wheel_l_z = l_wheel_center.translation()(2);
+    wbc_entry.com.vx = v_CoM(0); 
+    wbc_entry.com.vy = v_CoM(1); 
+    wbc_entry.com.vz = v_CoM(2);
 
-    wbc_entry.wheel_l_x_des = des_configuration_.lwheel.pos.p(0);
-    wbc_entry.wheel_l_y_des = des_configuration_.lwheel.pos.p(1);
-    wbc_entry.wheel_l_z_des = des_configuration_.lwheel.pos.p(2);
+    wbc_entry.com.vx_des = des_configuration_.com.vel(0); 
+    wbc_entry.com.vy_des = des_configuration_.com.vel(1); 
+    wbc_entry.com.vz_des = des_configuration_.com.vel(2);
 
-    wbc_entry.wheel_r_x = r_wheel_center.translation()(0);
-    wbc_entry.wheel_r_y = r_wheel_center.translation()(1);
-    wbc_entry.wheel_r_z = r_wheel_center.translation()(2);
+    wbc_entry.com.ax_des = des_configuration_.com.acc(0); 
+    wbc_entry.com.ay_des = des_configuration_.com.acc(1); 
+    wbc_entry.com.az_des = des_configuration_.com.acc(2);
 
-    wbc_entry.wheel_r_x_des = des_configuration_.rwheel.pos.p(0);
-    wbc_entry.wheel_r_y_des = des_configuration_.rwheel.pos.p(1);
-    wbc_entry.wheel_r_z_des = des_configuration_.rwheel.pos.p(2);
+    wbc_entry.wheel_l.px = l_wheel_center.translation()(0);
+    wbc_entry.wheel_l.py = l_wheel_center.translation()(1);
+    wbc_entry.wheel_l.pz = l_wheel_center.translation()(2);
+
+    wbc_entry.wheel_l.px_des = des_configuration_.lwheel.pos.p(0);
+    wbc_entry.wheel_l.py_des = des_configuration_.lwheel.pos.p(1);
+    wbc_entry.wheel_l.pz_des = des_configuration_.lwheel.pos.p(2);
+
+    wbc_entry.wheel_l.vx = curr_pl_vel(0);
+    wbc_entry.wheel_l.vy = curr_pl_vel(1);
+    wbc_entry.wheel_l.vz = curr_pl_vel(2);
+
+    wbc_entry.wheel_l.vx_des = des_configuration_.lwheel.vel(0);
+    wbc_entry.wheel_l.vy_des = des_configuration_.lwheel.vel(1);
+    wbc_entry.wheel_l.vz_des = des_configuration_.lwheel.vel(2);
+
+    wbc_entry.wheel_l.ax_des = des_configuration_.lwheel.acc(0);
+    wbc_entry.wheel_l.ay_des = des_configuration_.lwheel.acc(1);
+    wbc_entry.wheel_l.az_des = des_configuration_.lwheel.acc(2);
+
+    wbc_entry.wheel_r.px = r_wheel_center.translation()(0);
+    wbc_entry.wheel_r.py = r_wheel_center.translation()(1);
+    wbc_entry.wheel_r.pz = r_wheel_center.translation()(2);
+
+    wbc_entry.wheel_r.px_des = des_configuration_.rwheel.pos.p(0);
+    wbc_entry.wheel_r.py_des = des_configuration_.rwheel.pos.p(1);
+    wbc_entry.wheel_r.pz_des = des_configuration_.rwheel.pos.p(2);
+
+    wbc_entry.wheel_r.vx = curr_pl_vel(0);
+    wbc_entry.wheel_r.vy = curr_pl_vel(1);
+    wbc_entry.wheel_r.vz = curr_pl_vel(2);
+
+    wbc_entry.wheel_r.vx_des = des_configuration_.rwheel.vel(0);
+    wbc_entry.wheel_r.vy_des = des_configuration_.rwheel.vel(1);
+    wbc_entry.wheel_r.vz_des = des_configuration_.rwheel.vel(2);
+
+    wbc_entry.wheel_r.ax_des = des_configuration_.rwheel.acc(0);
+    wbc_entry.wheel_r.ay_des = des_configuration_.rwheel.acc(1);
+    wbc_entry.wheel_r.az_des = des_configuration_.rwheel.acc(2);
+
+    // log wbc solution
+    wbc_solution.time_ms = t_msec_;
+    // integrate joint accelerations to get velocities and positions with euler
+    wbc_solution.joint1.pos = q(0) + qdot(0) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[2]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint1.vel = qdot(0) + joint_acceleration[robot_model_->names[2]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint1.torque = joint_torque[robot_model_->names[2]];
+    wbc_solution.joint2.pos = q(1) + qdot(1) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[3]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint2.vel = qdot(1) + joint_acceleration[robot_model_->names[3]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint2.torque = joint_torque[robot_model_->names[3]];
+    wbc_solution.joint3.pos = q(2) + qdot(2) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[4]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint3.vel = qdot(2) + joint_acceleration[robot_model_->names[4]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint3.torque = joint_torque[robot_model_->names[4]];
+    wbc_solution.joint4.pos = q(3) + qdot(3) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[5]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint4.vel = qdot(3) + joint_acceleration[robot_model_->names[5]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint4.torque = joint_torque[robot_model_->names[5]];
+    wbc_solution.joint5.pos = q(4) + qdot(4) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[6]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint5.vel = qdot(4) + joint_acceleration[robot_model_->names[6]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint5.torque = joint_torque[robot_model_->names[6]];
+    wbc_solution.joint6.pos = q(5) + qdot(5) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[7]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint6.vel = qdot(5) + joint_acceleration[robot_model_->names[7]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint6.torque = joint_torque[robot_model_->names[7]];
+    wbc_solution.joint7.pos = q(6) + qdot(6) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[8]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint7.vel = qdot(6) + joint_acceleration[robot_model_->names[8]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint7.torque = joint_torque[robot_model_->names[8]];
+    wbc_solution.joint8.pos = q(7) + qdot(7) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[9]] * std::pow(0.001 * controller_timestep_msec_, 2);
+    wbc_solution.joint8.vel = qdot(7) + joint_acceleration[robot_model_->names[9]] * 0.001 * controller_timestep_msec_;
+    wbc_solution.joint8.torque = joint_torque[robot_model_->names[9]];
+
 
     logger_.log_wbc_data(std::move(wbc_entry));
 

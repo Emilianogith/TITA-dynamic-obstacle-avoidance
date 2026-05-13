@@ -66,6 +66,10 @@ class WholeBodyController {
       labrob::JointCommand& joint_acceleration
   );
 
+  Eigen::VectorXd get_contact_forces() const {
+    return contact_forces_;
+  }
+
   double wheel_radius_;
   double wheel_width_;
   double wheel_length_;
@@ -87,6 +91,8 @@ class WholeBodyController {
   Eigen::MatrixXd J_right_wheel_dot_;
   Eigen::MatrixXd J_left_wheel_dot_;
   Eigen::MatrixXd J_base_link_dot_;
+
+  Eigen::VectorXd contact_forces_;
 
   double sample_time_;
 

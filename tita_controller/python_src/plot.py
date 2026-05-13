@@ -11,10 +11,10 @@ Plots produced (each skipped gracefully if the source file is missing):
   estimation/        kf_test.csv (odom vs est, filter analysis, contact points, XY trajectory)
   imu/               imu_log.txt
   odometry/          odom.txt, robot_odom.csv
-  plan/              /tmp/plan/x.txt  [+ jump_traj.txt]
-  timings/           /tmp/timing_log.txt
-  wbc/               /tmp/wbc_log.txt  [+ /tmp/plan/x.txt]
-  mpc/               /tmp/mpc_data/{t}/x.txt + u.txt  (requires --mpc-t)
+  plan/              robot_logs/plan/x.txt  [+ jump_traj.txt]
+  timings/           robot_logs/timing_log.txt
+  wbc/               robot_logs/wbc_log.txt  [+ robot_logs/plan/x.txt]
+  mpc/               robot_logs/mpc_data/{t}/x.txt + u.txt  (requires --mpc-t)
   joints/state/      joint_state_log.txt  (per joint)
   joints/torques/    /tmp/joint_eff.txt
   joints/velocities/ /tmp/joint_vel.txt
@@ -68,8 +68,17 @@ plt.rcParams.update({
     'figure.dpi': 150,
 })
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+print(f'Output directory: {SCRIPT_DIR / "images"}')
+# Default log dir is robot_logs/ under the working directory (e.g. ros2_ws/).
+# Override with --log-dir if the script is run from a different location.
+# use path to find robot logs relative to mine even if the script is run from a different directory
+ROBOT_LOGS = Path('robot_logs').resolve()
+print(f'Robot logs directory: {ROBOT_LOGS}')
+
 # Output directory: images/ relative to this script
-OUT_DIR = Path(__file__).parent / 'images'
+OUT_DIR = SCRIPT_DIR / 'images'
+print(f'  ({OUT_DIR.relative_to(SCRIPT_DIR)})')
 
 
 # ---------------------------------------------------------------------------
@@ -785,10 +794,7 @@ def plot_numeric_derivative(log_dir: Path, joint_names: list) -> None:
 # ---------------------------------------------------------------------------
 
 def plot_tau_velocity(log_dir: Path, joint_names: list) -> None:
-    # tau_commanded.txt may live in /tmp or under log_dir
-    tau_file = Path('/tmp/tau_commanded.txt')
-    if not tau_file.exists():
-        tau_file = log_dir / 'tau_commanded.txt'
+    tau_file = log_dir / 'tau_commanded.txt'
     state_file = log_dir / 'joint_state_log.txt'
 
     if not tau_file.exists() and not state_file.exists():
@@ -865,8 +871,6 @@ def plot_tau_velocity(log_dir: Path, joint_names: list) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    default_log = Path.home() / 'ros2_ws' / 'robot_logs'
-
     parser = argparse.ArgumentParser(
         description=(
             'Generate TITA controller plots.\n'
@@ -877,10 +881,10 @@ def main() -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--log-dir', type=Path, default=default_log,
-                        help=f'Directory with robot log files  [default: {default_log}]')
-    parser.add_argument('--tmp-dir', type=Path, default=Path('/tmp'),
-                        help='Temporary data directory  [default: /tmp]')
+    parser.add_argument('--log-dir', type=Path, default=ROBOT_LOGS,
+                        help=f'Directory with robot log files  [default: {ROBOT_LOGS}]')
+    parser.add_argument('--tmp-dir', type=Path, default=ROBOT_LOGS,
+                        help=f'Temporary data directory  [default: {ROBOT_LOGS}]')
     parser.add_argument('--joints', nargs='+',
                         default=['joint_left_leg_4', 'joint_right_leg_4'],
                         help='Joint names for per-joint plots')

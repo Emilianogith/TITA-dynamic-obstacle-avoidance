@@ -473,6 +473,7 @@ WholeBodyController::compute_inverse_dynamics(
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);  
+  contact_forces_ = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd tau = solution.tail(n_joints_);
 
 
