@@ -434,33 +434,15 @@ void WalkingManager::update(
     wbc_entry.wheel_r.ay_des = des_configuration_.rwheel.acc(1);
     wbc_entry.wheel_r.az_des = des_configuration_.rwheel.acc(2);
 
-    // log wbc solution
-    wbc_solution.time_ms = t_msec_;
-    // integrate joint accelerations to get velocities and positions with euler
-    wbc_solution.joint1.pos = q(0) + qdot(0) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[2]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint1.vel = qdot(0) + joint_acceleration[robot_model_->names[2]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint1.torque = joint_torque[robot_model_->names[2]];
-    wbc_solution.joint2.pos = q(1) + qdot(1) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[3]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint2.vel = qdot(1) + joint_acceleration[robot_model_->names[3]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint2.torque = joint_torque[robot_model_->names[3]];
-    wbc_solution.joint3.pos = q(2) + qdot(2) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[4]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint3.vel = qdot(2) + joint_acceleration[robot_model_->names[4]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint3.torque = joint_torque[robot_model_->names[4]];
-    wbc_solution.joint4.pos = q(3) + qdot(3) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[5]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint4.vel = qdot(3) + joint_acceleration[robot_model_->names[5]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint4.torque = joint_torque[robot_model_->names[5]];
-    wbc_solution.joint5.pos = q(4) + qdot(4) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[6]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint5.vel = qdot(4) + joint_acceleration[robot_model_->names[6]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint5.torque = joint_torque[robot_model_->names[6]];
-    wbc_solution.joint6.pos = q(5) + qdot(5) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[7]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint6.vel = qdot(5) + joint_acceleration[robot_model_->names[7]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint6.torque = joint_torque[robot_model_->names[7]];
-    wbc_solution.joint7.pos = q(6) + qdot(6) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[8]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint7.vel = qdot(6) + joint_acceleration[robot_model_->names[8]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint7.torque = joint_torque[robot_model_->names[8]];
-    wbc_solution.joint8.pos = q(7) + qdot(7) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration.[robot_model_->names[9]] * std::pow(0.001 * controller_timestep_msec_, 2);
-    wbc_solution.joint8.vel = qdot(7) + joint_acceleration[robot_model_->names[9]] * 0.001 * controller_timestep_msec_;
-    wbc_solution.joint8.torque = joint_torque[robot_model_->names[9]];
+    // fill with desired values trhough integration of accelerations
+    wbc_entry.solution.joints.pos = Eigen::VectorXd::Zero(q.size());
+    wbc_entry.solution.joints.vel = Eigen::VectorXd::Zero(q.size());
+    wbc_entry.solution.joints.effort = Eigen::VectorXd::Zero(q.size());
+    for (size_t i = 0; i < q.size(); ++i){
+        wbc_entry.solution.joints.pos(i) = q(i) + qdot(i) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration[robot_model_->names[i+2]] * std::pow(0.001 * controller_timestep_msec_, 2);
+        wbc_entry.solution.joints.vel(i) = qdot(i) + joint_acceleration[robot_model_->names[i+2]] * 0.001 * controller_timestep_msec_;
+        wbc_entry.solution.joints.effort(i) = joint_torque[robot_model_->names[i+2]];
+    }
 
 
     logger_.log_wbc_data(std::move(wbc_entry));

@@ -21,7 +21,8 @@
 #include <StateFilter_no_bias.hpp>
 #include <Wheel_KF.hpp>
 #include <RobotOdometry.hpp>             // change for angular velocity odometry
-#include <WalkingManager.hpp>   
+#include <WalkingManager.hpp>
+#include <Logger.hpp>
 
 
 
@@ -174,27 +175,9 @@ public:
             << "p_cL_est_x,p_cL_est_y,p_cL_est_z,"
             << "p_cR_est_x,p_cR_est_y,p_cR_est_z\n";
 
-        // ---------- Robot odometry log ----------
-        robot_odom_log.open(log_path_ + "/robot_odom.csv");
-        robot_odom_log << "t,"
-            << "p_odom_x,p_odom_y,p_odom_z,"
-            << "v_odom_x,v_odom_y,v_odom_z,"
-            // << "omega_odom_x,omega_odom_y,omega_odom_z,"            // comment for angular velocity odometry
-            << "p_cL_odom_x,p_cL_odom_y,p_cL_odom_z,"   
-            << "p_cR_odom_x,p_cR_odom_y,p_cR_odom_z,"
-            << "w_l_odom,w_r_odom\n";
-
         // ---------- Wheel log ----------
         // wheel_log_.open(log_path_ + "wheel_log.txt");
         // wheel_log_ << "Timestamp, Joint Name, Position, Velocity, Velocity Difference, filter position, filter velocity\n";
-
-        // ---------- Other logs ----------
-        odom_log_.open(log_path_ + "/odom.txt");
-        imu_log_.open(log_path_ + "/imu_log.txt");
-        joint_state_log_.open(log_path_ + "/joint_state_log.txt");
-
-        // ---------- Joint effort log ----------
-        joint_eff_log_file_.open(log_path_ + "/joint_eff.txt");
         
         tau_commanded.open(log_path_ + "/tau_commanded.txt");
 
@@ -254,6 +237,17 @@ public:
         RCLCPP_INFO(this->get_logger(),
             "Controller gains loaded from YAML");
 
+        // ---------- Feedback logger setup ----------
+        std::vector<std::string> jnt_names;
+        for (pinocchio::JointIndex j = 2; j < static_cast<pinocchio::JointIndex>(robot_model_.njoints); ++j) {
+            jnt_names.push_back(robot_model_.names[j]);
+        }
+        node_logger_.set_joint_names(jnt_names);
+        node_logger_.reserve(50000);    // ~100 s at 500 Hz
+    }
+
+    ~RobotController() {
+        node_logger_.save_log_data(log_path_);
     }
 
 
@@ -275,27 +269,6 @@ private:
                                                 msg->pose.pose.orientation.z
                                             );
         robot_sensor_.odom.orientation.normalize();
-
-
-
-        odom_log_ 
-            << "Timestamp: " << std::fixed << std::setprecision(9) << (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9) << "\n"
-            << "Frame ID: " << msg->header.frame_id << "\n"
-            << "Child Frame ID: " << msg->child_frame_id << "\n"
-            << "Position: x=" << msg->pose.pose.position.x
-            << ", y=" << msg->pose.pose.position.y
-            << ", z=" << msg->pose.pose.position.z << "\n"
-            << "Orientation: x=" << msg->pose.pose.orientation.x
-            << ", y=" << msg->pose.pose.orientation.y
-            << ", z=" << msg->pose.pose.orientation.z
-            << ", w=" << msg->pose.pose.orientation.w << "\n"
-            << "Linear Velocity: x=" << msg->twist.twist.linear.x
-            << ", y=" << msg->twist.twist.linear.y
-            << ", z=" << msg->twist.twist.linear.z << "\n"
-            << "Angular Velocity: x=" << msg->twist.twist.angular.x
-            << ", y=" << msg->twist.twist.angular.y
-            << ", z=" << msg->twist.twist.angular.z << "\n"
-            << "----------------------------------------" << std::endl;
     }
 
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
@@ -320,12 +293,19 @@ private:
                                                 msg->linear_acceleration.z
                                             );
 
-        imu_log_ << "Timestamp: " << std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-            << "orientation: " << msg->orientation.x << " " << msg->orientation.y << " "
-            << msg->orientation.z << " " << msg->orientation.w << " "
-            << "angular_velocity: " << msg->angular_velocity.x << " " << msg->angular_velocity.y << " " << msg->angular_velocity.z << " "
-            << "linear_acceleration: " << msg->linear_acceleration.x << " " << msg->linear_acceleration.y << " " << msg->linear_acceleration.z
-            << std::endl;
+        labrob::ImuEntry imu_entry;
+        imu_entry.time_s = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
+        imu_entry.qx = msg->orientation.x;
+        imu_entry.qy = msg->orientation.y;
+        imu_entry.qz = msg->orientation.z;
+        imu_entry.qw = msg->orientation.w;
+        imu_entry.wx = msg->angular_velocity.x;
+        imu_entry.wy = msg->angular_velocity.y;
+        imu_entry.wz = msg->angular_velocity.z;
+        imu_entry.ax = msg->linear_acceleration.x;
+        imu_entry.ay = msg->linear_acceleration.y;
+        imu_entry.az = msg->linear_acceleration.z;
+        node_logger_.log_imu_data(std::move(imu_entry));
     }
 
     void joint_states_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -337,20 +317,18 @@ private:
                 joint.vel = (i < msg->velocity.size()) ? msg->velocity[i] : 0.0; 
 
                 double effort = i < msg->effort.size() ? msg->effort[i] : 0.0;
-
-                rclcpp::Time now = this->get_clock()->now();
-                double time_sec = now.seconds();
-
-                // logs the joint values
-                joint_state_log_ <<std::fixed << std::setprecision(9) << msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9 << " "
-                << time_sec << " "
-                << msg->name[i] << ":  pos: "
-                << joint.pos << " vel: "
-                << joint.vel << " effort: "
-                << effort << std::endl;
+                (void)effort;   // used below in JointStateEntry
             }
 
-        joint_state_log_ << "----------------------------------------" << std::endl;
+        labrob::JointStateEntry js_entry;
+        js_entry.time_stamp_s = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
+        js_entry.time_now_s   = this->get_clock()->now().seconds();
+        for (size_t i = 0; i < std::min(msg->name.size(), (size_t)8); ++i) {
+            js_entry.joints.pos[i]    = (i < msg->position.size()) ? msg->position[i] : 0.0;
+            js_entry.joints.vel[i]    = (i < msg->velocity.size()) ? msg->velocity[i] : 0.0;
+            js_entry.joints.effort[i] = (i < msg->effort.size())   ? msg->effort[i]   : 0.0;
+        }
+        node_logger_.log_joint_state_data(std::move(js_entry));
 
 
         // ----- filter noisy wheels encoder data ------
@@ -775,14 +753,6 @@ private:
                         return;
                     }
 
-                    // ------------ log joint torques ------------
-                    joint_eff_log_file_ << " ";
-                    int idx = 0;
-                    for (pinocchio::JointIndex j = 2; static_cast<int>(j) < robot_model_.njoints; ++j, ++idx) {
-                        const auto& name = robot_model_.names[j];
-                        joint_eff_log_file_ << tau[name] << " ";
-                    }
-                    joint_eff_log_file_ << std::endl;
                     break;
                 }
 
@@ -794,12 +764,12 @@ private:
         rclcpp::Time now = this->get_clock()->now();
         double time_sec = now.seconds();
 
-        tau_commanded << std::fixed << std::setprecision(9)
-              << time_sec << " ";
+        labrob::TauCommandedEntry tau_entry;
+        tau_entry.time_s   = time_sec;
         for (int idx = 0; idx < na;  ++idx) {
-            tau_commanded << effort_msg.data[idx] << " ";
+            tau_entry.tau[idx] = effort_msg.data[idx];
         }
-        tau_commanded << std::endl;
+        node_logger_.log_tau_commanded_data(std::move(js_entry));
 
         // ------------ Publish effort commad ------------
         effort_cmd_pub_->publish(effort_msg);
@@ -932,15 +902,12 @@ private:
     // log files
     std::string log_path_;
 
-    std::ofstream odom_log_;
-    std::ofstream imu_log_;
-    std::ofstream joint_state_log_;
     std::ofstream csv;
-    std::ofstream robot_odom_log;
-    std::ofstream joint_eff_log_file_;
     // std::ofstream wheel_log_;
 
     std::ofstream tau_commanded;
+
+    labrob::Logger node_logger_;
 
     std::vector<double> KP_reg_gains_;
     std::vector<double> KD_reg_gains_;

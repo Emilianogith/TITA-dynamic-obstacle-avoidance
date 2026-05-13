@@ -2,6 +2,8 @@
 
 #include <vector>
 #include <string>
+#include <array>
+#include <chrono>
 #include <fstream>
 #include <stdexcept>
 #include <cstddef>
@@ -37,9 +39,9 @@ struct GenericTask {
 }
 
 struct JointData {
-    double pos = 0.0;
-    double vel = 0.0;
-    double torque = 0.0;
+    std::array<double, 8> pos    = {};
+    std::array<double, 8> vel    = {};
+    std::array<double, 8> effort = {};
 }
 
 struct WBCEntry {
@@ -48,19 +50,11 @@ struct WBCEntry {
     GenericTask com;
     GenericTask wheel_l;
     GenericTask wheel_r;
+    WBCSolution solution;
 };
 
 struct WBCSolution {
-    double time_ms = 0.0;
-
-    JointData joint1;
-    JointData joint2;
-    JointData joint3;
-    JointData joint4;
-    JointData joint5;
-    JointData joint6;
-    JointData joint7;
-    JointData joint8;
+    JointData joints;
 
     // aggiungi contct forces, ma non si sa il numero esatto, dipende dai contatti
     
@@ -79,6 +73,24 @@ struct TimingEntry {
     long total_time_us = 0;
 };
 
+struct ImuEntry {
+    double time_s = 0.0;
+    double qx = 0.0, qy = 0.0, qz = 0.0, qw = 1.0;
+    double wx = 0.0, wy = 0.0, wz = 0.0;
+    double ax = 0.0, ay = 0.0, az = 0.0;
+};
+
+struct JointStateEntry {
+    double time_stamp_s = 0.0;   // from message header
+    double time_now_s   = 0.0;   // from ros clock
+    JointData joints;
+};
+
+struct TauCommandedEntry {
+    double time_s = 0.0;
+    std::array<double, 8> tau = {};
+}
+
 class Logger {
 public:
     Logger() = default;
@@ -91,12 +103,18 @@ public:
         wbc_entries_.reserve(n);
         mpc_entries_.reserve(n);
         timing_entries_.reserve(n);
+        imu_entries_.reserve(n);
+        joint_entries_.reserve(n);
+        tau_entries_.reserve(n);
     }
 
     void clear() {
         wbc_entries_.clear();
         mpc_entries_.clear();
         timing_entries_.clear();
+        imu_entries_.clear();
+        joint_entries_.clear();
+        tau_entries_.clear();
     }
 
     void log_wbc_data(const WBCEntry& entry) {
@@ -123,6 +141,34 @@ public:
         timing_entries_.emplace_back(std::move(entry));
     }
 
+    void set_joint_names(std::vector<std::string> names) {
+        joint_names_ = std::move(names);
+    }
+
+    void log_imu_data(const ImuEntry& entry) {
+        imu_entries_.emplace_back(entry);
+    }
+
+    void log_imu_data(ImuEntry&& entry) {
+        imu_entries_.emplace_back(std::move(entry));
+    }
+
+    void log_joint_state_data(const JointStateEntry& entry) {
+        joint_entries_.emplace_back(entry);
+    }
+
+    void log_joint_state_data(JointStateEntry&& entry) {
+        joint_entries_.emplace_back(std::move(entry));
+    }
+
+    void log_tau_commanded_data(const TauCommandedEntry& entry) {
+        tau_entries_.emplace_back(entry);
+    }
+
+    void log_tau_commanded_data(TauCommandedEntry&& entry) {
+        tau_entries_.emplace_back(std::move(entry));
+    }
+
     void save_log_data(const std::string& directory = "/tmp") const {
         namespace fs = std::filesystem;
         fs::create_directories(directory);
@@ -143,11 +189,28 @@ public:
         auto end_mpc_log = std::chrono::system_clock::now();
         auto mpc_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_mpc_log - end_timing_log).count();
         std::cout << "MPC logs saved in " << mpc_log_time << " ms" << std::endl;
+
+        save_imu_logs(directory + "/imu_log.txt");
+        auto end_imu_log = std::chrono::system_clock::now();
+        auto imu_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_imu_log - end_mpc_log).count();
+        std::cout << "IMU logs saved in " << imu_log_time << " ms" << std::endl;
+
+        save_joint_state_logs(directory + "/joint_state_log.txt");
+        auto end_js_log = std::chrono::system_clock::now();
+        auto js_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_js_log - end_imu_log).count();
+
+        save_tau_commanded_logs(directory + "/tau_commanded_log.txt");
+        auto end_tau_log = std::chrono::system_clock::now();
+        auto tau_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_tau_log - end_js_log).count();
+        std::cout << "Joint state logs saved in " << tau_log_time << " ms" << std::endl;
     }
 
-    std::size_t wbc_size() const { return wbc_entries_.size(); }
-    std::size_t mpc_size() const { return mpc_entries_.size(); }
-    std::size_t timing_size() const { return timing_entries_.size(); }
+    std::size_t wbc_size()         const { return wbc_entries_.size(); }
+    std::size_t mpc_size()         const { return mpc_entries_.size(); }
+    std::size_t timing_size()      const { return timing_entries_.size(); }
+    std::size_t imu_size()         const { return imu_entries_.size(); }
+    std::size_t joint_state_size() const { return joint_entries_.size(); }
+    std::size_t tau_commanded_size() const { return tau_entries_.size(); }
 
 private:
     static void save_matrix_txt(const Eigen::MatrixXd& M, const std::filesystem::path& filename) {
@@ -226,10 +289,75 @@ private:
         }
     }
 
+    void save_imu_logs(const std::string& filename) const {
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            throw std::runtime_error("Failed to open file: " + filename);
+        }
+        out << "time_s,qx,qy,qz,qw,wx,wy,wz,ax,ay,az\n";
+        out << std::fixed << std::setprecision(9);
+        for (const auto& e : imu_entries_) {
+            out << e.time_s << ","
+                << e.qx << "," << e.qy << "," << e.qz << "," << e.qw << ","
+                << e.wx << "," << e.wy << "," << e.wz << ","
+                << e.ax << "," << e.ay << "," << e.az << "\n";
+        }
+    }
+
+    void save_joint_state_logs(const std::string& filename) const {
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            throw std::runtime_error("Failed to open file: " + filename);
+        }
+        out << "time_stamp_s,time_now_s";
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size()))
+                                  ? joint_names_[i]
+                                  : ("j" + std::to_string(i));
+            out << "," << n << "_pos," << n << "_vel," << n << "_effort";
+        }
+        out << "\n";
+        out << std::fixed << std::setprecision(9);
+        for (const auto& e : joint_entries_) {
+            out << e.time_stamp_s << "," << e.time_now_s;
+            for (int i = 0; i < 8; ++i) {
+                out << "," << e.joints.pos[i] << "," << e.joints.vel[i] << "," << e.joints.effort[i];
+            }
+            out << "\n";
+        }
+    }
+
+    void save_tau_commanded_logs(const std::string& filename) const {
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            throw std::runtime_error("Failed to open file: " + filename);
+        }
+        out << "time_s";
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size()))
+                                  ? joint_names_[i]
+                                  : ("j" + std::to_string(i));
+            out << "," << n << "_tau";
+        }
+        out << "\n";
+        out << std::fixed << std::setprecision(9);
+        for (const auto& e : tau_entries_) {
+            out << e.time_s;
+            for (int i = 0; i < 8; ++i) {
+                out << "," << e.tau[i];
+            }
+            out << "\n";
+        }
+    }
+
 private:
     std::vector<WBCEntry> wbc_entries_;
     std::vector<MPCEntry> mpc_entries_;
     std::vector<TimingEntry> timing_entries_;
+    std::vector<ImuEntry> imu_entries_;
+    std::vector<JointStateEntry> joint_entries_;
+    std::vector<TauCommandedEntry> tau_entries_;
+    std::vector<std::string> joint_names_;
 };
 
 } // namespace labrob
