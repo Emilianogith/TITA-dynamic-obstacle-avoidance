@@ -7,7 +7,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-ROBOT_LOGS = SCRIPT_DIR.parents[2] / "robot_logs"
+ROBOT_LOGS = Path('robot_logs').resolve()
 
 BASE_DIR = ROBOT_LOGS / "mpc_data"
 
