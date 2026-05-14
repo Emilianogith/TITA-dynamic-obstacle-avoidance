@@ -434,14 +434,44 @@ void WalkingManager::update(
     wbc_entry.wheel_r.ay_des = des_configuration_.rwheel.acc(1);
     wbc_entry.wheel_r.az_des = des_configuration_.rwheel.acc(2);
 
-    // fill with desired values trhough integration of accelerations
-    wbc_entry.solution.joints.pos = Eigen::VectorXd::Zero(q.size());
-    wbc_entry.solution.joints.vel = Eigen::VectorXd::Zero(q.size());
-    wbc_entry.solution.joints.effort = Eigen::VectorXd::Zero(q.size());
-    for (size_t i = 0; i < q.size(); ++i){
-        wbc_entry.solution.joints.pos(i) = q(i) + qdot(i) * 0.001 * controller_timestep_msec_ + 0.5 * joint_acceleration[robot_model_->names[i+2]] * std::pow(0.001 * controller_timestep_msec_, 2);
-        wbc_entry.solution.joints.vel(i) = qdot(i) + joint_acceleration[robot_model_->names[i+2]] * 0.001 * controller_timestep_msec_;
-        wbc_entry.solution.joints.effort(i) = joint_torque[robot_model_->names[i+2]];
+    // torso task: px=roll, py=pitch, pz=yaw (actual from quaternion, desired from R_theta)
+    {
+        const Eigen::Quaterniond& qb = robot_state.orientation;
+        wbc_entry.torso.px = std::atan2(2*(qb.w()*qb.x() + qb.y()*qb.z()),
+                                         1 - 2*(qb.x()*qb.x() + qb.y()*qb.y()));
+        wbc_entry.torso.py = std::asin(std::clamp(2*(qb.w()*qb.y() - qb.z()*qb.x()), -1.0, 1.0));
+        wbc_entry.torso.pz = std::atan2(2*(qb.w()*qb.z() + qb.x()*qb.y()),
+                                         1 - 2*(qb.y()*qb.y() + qb.z()*qb.z()));
+
+        wbc_entry.torso.px_des = 0.0;   // desired roll  = 0
+        wbc_entry.torso.py_des = 0.0;   // desired pitch = 0
+        wbc_entry.torso.pz_des = std::atan2(des_configuration_.base_link.pos(1,0),
+                                             des_configuration_.base_link.pos(0,0));
+
+        wbc_entry.torso.vx_des = des_configuration_.base_link.vel(0);
+        wbc_entry.torso.vy_des = des_configuration_.base_link.vel(1);
+        wbc_entry.torso.vz_des = des_configuration_.base_link.vel(2);
+
+        wbc_entry.torso.ax_des = des_configuration_.base_link.acc(0);
+        wbc_entry.torso.ay_des = des_configuration_.base_link.acc(1);
+        wbc_entry.torso.az_des = des_configuration_.base_link.acc(2);
+    }
+
+    // WBC solution: desired pos/vel (integrated from current state) and output torques
+    {
+        const int na    = robot_model_->njoints - 2;   // 8 actuated joints
+        const int q_off = robot_model_->nq - na;       // free-flyer offset in q  (= 7)
+        const int v_off = robot_model_->nv - na;       // free-flyer offset in qdot (= 6)
+        const double dt = 0.001 * controller_timestep_msec_;
+        for (int i = 0; i < na; ++i) {
+            const std::string& name = robot_model_->names[i + 2];
+            wbc_entry.solution.joints.pos[i]    = q(q_off + i)
+                + qdot(v_off + i) * dt
+                + 0.5 * joint_acceleration[name] * dt * dt;
+            wbc_entry.solution.joints.vel[i]    = qdot(v_off + i)
+                + joint_acceleration[name] * dt;
+            wbc_entry.solution.joints.effort[i] = joint_torque[name];
+        }
     }
 
 

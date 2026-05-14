@@ -247,7 +247,11 @@ public:
     }
 
     ~RobotController() {
-        node_logger_.save_log_data(log_path_);
+        if (initialized_walking_manager_) {
+            walking_manager_.save_data(log_path_);
+            initialized_walking_manager_ = false;
+        }
+        node_logger_.save_feedback_logs(log_path_);
     }
 
 
@@ -769,7 +773,7 @@ private:
         for (int idx = 0; idx < na;  ++idx) {
             tau_entry.tau[idx] = effort_msg.data[idx];
         }
-        node_logger_.log_tau_commanded_data(std::move(js_entry));
+        node_logger_.log_tau_commanded_data(std::move(tau_entry));
 
         // ------------ Publish effort commad ------------
         effort_cmd_pub_->publish(effort_msg);

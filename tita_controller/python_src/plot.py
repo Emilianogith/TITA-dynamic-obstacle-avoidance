@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-Generalized plotting script for TITA controller logs.
+TITA controller plotting script.
 
-By default every group is saved to images/ (organised in subdirectories).
-Pass --show-<group> to open that group in interactive windows instead of
-saving — you can zoom, pan, and inspect values.  Multiple flags are allowed.
+Images are saved to images/ (relative to this script), organised as:
+  filter/           kf_test.csv  — single summary plot of KF state
+  wbc/
+    com_task/       wbc_log.txt  — CoM position & velocity (actual vs desired)
+    wheel_task/     wbc_log.txt  — Wheel position & velocity (actual vs desired)
+    torso_task/     wbc_log.txt  — Torso orientation (skipped if missing)
+    wbc_solution/   wbc_log.txt + joint_state_log.txt + tau_commanded_log.txt
+  timings/          timing_log.txt
+  feedback/
+    imu/            imu_log.txt  — raw IMU sensor data
+    joints/         joint_state_log.txt  — raw joint feedback
 
-Plots produced (each skipped gracefully if the source file is missing):
-  encoder_wheels/    wheel_log.txt
-  estimation/        kf_test.csv (odom vs est, filter analysis, contact points, XY trajectory)
-  imu/               imu_log.txt
-  odometry/          odom.txt, robot_odom.csv
-  plan/              robot_logs/plan/x.txt  [+ jump_traj.txt]
-  timings/           robot_logs/timing_log.txt
-  wbc/               robot_logs/wbc_log.txt  [+ robot_logs/plan/x.txt]
-  mpc/               robot_logs/mpc_data/{t}/x.txt + u.txt  (requires --mpc-t)
-  joints/state/      joint_state_log.txt  (per joint)
-  joints/torques/    /tmp/joint_eff.txt
-  joints/velocities/ /tmp/joint_vel.txt
-  joints/numeric_derivative/  numeric_derivative.txt  (per joint)
-  joints/tau_velocity/        tau_commanded.txt + joint_state_log.txt  (per joint)
+Legacy groups (still accessible via --only encoder|odom|plan):
+  encoder   wheel_log.txt
+  odom      odom.txt, robot_odom.csv
+  plan      plan/x.txt  [+ jump_traj.txt]
+
+Pass --show-<group> to view a group interactively instead of saving.
+Pass --only <group> [<group>...] to run only those groups.
 """
 
 import argparse
@@ -29,11 +30,8 @@ import numpy as np
 import pandas as pd
 import matplotlib
 
-# ---------------------------------------------------------------------------
-# Determine which groups to show interactively — must happen before pyplot
-# import so that matplotlib.use('Agg') is called at the right time.
-# ---------------------------------------------------------------------------
-_ALL_GROUPS = {'encoder', 'estimation', 'imu', 'odom', 'plan', 'timings', 'wbc', 'mpc', 'joints'}
+_ALL_GROUPS = {'filter', 'wbc', 'timings', 'feedback', 'encoder', 'odom', 'plan'}
+_DEFAULT_GROUPS = {'filter', 'wbc', 'timings', 'feedback'}
 _SHOW = {g for g in _ALL_GROUPS if f'--show-{g}' in sys.argv}
 if not _SHOW:
     matplotlib.use('Agg')
@@ -69,27 +67,22 @@ plt.rcParams.update({
 })
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-print(f'Output directory: {SCRIPT_DIR / "images"}')
-# Default log dir is robot_logs/ under the working directory (e.g. ros2_ws/).
-# Override with --log-dir if the script is run from a different location.
-# use path to find robot logs relative to mine even if the script is run from a different directory
-ROBOT_LOGS = Path('robot_logs').resolve()
-print(f'Robot logs directory: {ROBOT_LOGS}')
-
-# Output directory: images/ relative to this script
+ROBOT_LOGS = Path.cwd() / 'robot_logs'
 OUT_DIR = SCRIPT_DIR / 'images'
-print(f'  ({OUT_DIR.relative_to(SCRIPT_DIR)})')
 
+JOINT_NAMES = [
+    'joint_left_leg_1', 'joint_left_leg_2', 'joint_left_leg_3', 'joint_left_leg_4',
+    'joint_right_leg_1', 'joint_right_leg_2', 'joint_right_leg_3', 'joint_right_leg_4',
+]
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def save(fig, group: str, *parts: str) -> None:
-    """Save fig to images/<parts> or, if group is in _SHOW, keep it open."""
     if group in _SHOW:
         print(f'  queued {"/".join(parts)}')
-        return  # leave fig open; plt.show() at the end renders all
+        return
     path = OUT_DIR.joinpath(*parts)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches='tight')
@@ -105,6 +98,17 @@ def _xyz_lines(ax, t, x, y, z, labels=('x', 'y', 'z'), linestyles=('-', '-', '-'
     for d, lbl, ls, c in zip([x, y, z], labels, linestyles, [CB[5], CB[3], CB[6]]):
         ax.plot(t, d, ls, color=c, label=lbl)
     ax.legend()
+
+
+def _xyz_comparison(ax, t_act, act_x, act_y, act_z, t_des, des_x, des_y, des_z):
+    """Plot actual (solid) vs desired (dashed) for x, y, z on a single axis."""
+    for d_act, d_des, c, axis in zip(
+        [act_x, act_y, act_z], [des_x, des_y, des_z],
+        [CB[5], CB[3], CB[6]], ['x', 'y', 'z']
+    ):
+        ax.plot(t_act, d_act, '-',  color=c, label=f'{axis} actual')
+        ax.plot(t_des, d_des, '--', color=c, alpha=0.75, label=f'{axis} des')
+    ax.legend(ncol=2, fontsize=8)
 
 
 def _quat_to_rpy(qx, qy, qz, qw):
@@ -123,7 +127,573 @@ def _fix_quat_continuity(q: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Encoder wheel log  (wheel_log.txt)
+# Data loaders  (all files now live in robot_logs/)
+# ---------------------------------------------------------------------------
+
+def _load_csv(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        warn_missing(path)
+        return None
+    try:
+        return pd.read_csv(path)
+    except Exception as e:
+        print(f'  [error] reading {path}: {e}')
+        return None
+
+
+def _load_wbc(log_dir: Path) -> pd.DataFrame | None:
+    return _load_csv(log_dir / 'wbc_log.txt')
+
+
+def _load_joint_state(log_dir: Path) -> pd.DataFrame | None:
+    return _load_csv(log_dir / 'joint_state_log.txt')
+
+
+def _load_imu(log_dir: Path) -> pd.DataFrame | None:
+    return _load_csv(log_dir / 'imu_log.txt')
+
+
+def _load_tau_commanded(log_dir: Path) -> pd.DataFrame | None:
+    df = _load_csv(log_dir / 'tau_commanded_log.txt')
+    if df is None:
+        df = _load_csv(log_dir / 'tau_commanded.txt')   # legacy name
+    return df
+
+
+# ---------------------------------------------------------------------------
+# filter  (kf_test.csv) — single summary figure
+# ---------------------------------------------------------------------------
+
+def plot_filter(log_dir: Path) -> None:
+    csv = log_dir / 'kf_test.csv'
+    if not csv.exists():
+        warn_missing(csv)
+        return
+
+    df = pd.read_csv(csv)
+    if df.empty:
+        print('  [skip] kf_test.csv has no data rows')
+        return
+    t = df['t'].values - df['t'].iloc[0]
+
+    has_quat = all(c in df.columns for c in ['qx', 'qy', 'qz', 'qw'])
+
+    fig, axes = plt.subplots(3, 2, figsize=(16, 12), sharex=True)
+    fig.suptitle('KF State Estimation — Filter Output', fontsize=13)
+
+    # [0,0] estimated base position
+    ax = axes[0, 0]
+    _xyz_lines(ax, t, df['p_est_x'].values, df['p_est_y'].values, df['p_est_z'].values)
+    ax.set_ylabel('Position [m]'); ax.set_title('Estimated Base Position')
+
+    # [0,1] estimated base velocity
+    ax = axes[0, 1]
+    _xyz_lines(ax, t, df['v_est_x'].values, df['v_est_y'].values, df['v_est_z'].values)
+    ax.set_ylabel('Velocity [m/s]'); ax.set_title('Estimated Base Velocity')
+
+    # [1,0] left contact point
+    ax = axes[1, 0]
+    _xyz_lines(ax, t,
+               df['p_cL_est_x'].values, df['p_cL_est_y'].values, df['p_cL_est_z'].values)
+    ax.set_ylabel('Position [m]'); ax.set_title('Left Contact Point (est)')
+
+    # [1,1] right contact point
+    ax = axes[1, 1]
+    _xyz_lines(ax, t,
+               df['p_cR_est_x'].values, df['p_cR_est_y'].values, df['p_cR_est_z'].values)
+    ax.set_ylabel('Position [m]'); ax.set_title('Right Contact Point (est)')
+
+    # [2,0] orientation RPY
+    if has_quat:
+        q = _fix_quat_continuity(df[['qx', 'qy', 'qz', 'qw']].values)
+        roll, pitch, yaw = _quat_to_rpy(q[:, 0], q[:, 1], q[:, 2], q[:, 3])
+        ax = axes[2, 0]
+        for d, lbl, c in zip(
+            [np.unwrap(roll), np.unwrap(pitch), np.unwrap(yaw)],
+            ['roll', 'pitch', 'yaw'], [CB[1], CB[2], CB[5]]
+        ):
+            ax.plot(t, d, color=c, label=lbl)
+        ax.set_ylabel('Angle [rad]'); ax.set_title('Orientation (RPY)'); ax.legend()
+    else:
+        axes[2, 0].set_visible(False)
+
+    # [2,1] XY trajectory
+    ax = axes[2, 1]
+    ax.plot(df['p_est_x'].values, df['p_est_y'].values, color=CB[5])
+    ax.set_xlabel('x [m]'); ax.set_ylabel('y [m]')
+    ax.set_title('XY Trajectory'); ax.set_aspect('equal', adjustable='datalim')
+
+    for col in range(2):
+        axes[2, col].set_xlabel('Time [s]')
+    axes[2, 1].set_xlabel('x [m]')
+    fig.tight_layout()
+    save(fig, 'filter', 'filter', 'filter_summary.png')
+
+
+# ---------------------------------------------------------------------------
+# wbc — task tracking and WBC solution
+# ---------------------------------------------------------------------------
+
+def _wbc_time(df: pd.DataFrame) -> np.ndarray:
+    return (df['time_ms'].values - df['time_ms'].iloc[0]) / 1000.0
+
+
+def plot_wbc_com(df: pd.DataFrame) -> None:
+    t = _wbc_time(df)
+
+    # --- Position ---
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC CoM Task — Position Comparison', fontsize=13)
+    for ax, axis in zip(axes, ['x', 'y', 'z']):
+        ax.plot(t, df[f'com_{axis}'].values,     '-',  color=CB[5], label='actual')
+        ax.plot(t, df[f'com_{axis}_des'].values, '--', color=CB[6], label='desired')
+        ax.set_ylabel(f'{axis} [m]'); ax.set_title(f'CoM {axis}'); ax.legend()
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'com_task', 'comparison', 'position.png')
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC CoM Task — Position Error', fontsize=13)
+    for ax, axis in zip(axes, ['x', 'y', 'z']):
+        err = df[f'com_{axis}_des'].values - df[f'com_{axis}'].values
+        ax.plot(t, err, color=CB[6])
+        ax.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+        ax.set_ylabel(f'err {axis} [m]'); ax.set_title(f'CoM {axis} error')
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'com_task', 'error', 'position_error.png')
+
+    if 'com_vx' not in df.columns:
+        return
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC CoM Task — Velocity Comparison', fontsize=13)
+    for ax, axis in zip(axes, ['x', 'y', 'z']):
+        ax.plot(t, df[f'com_v{axis}'].values,     '-',  color=CB[5], label='actual')
+        ax.plot(t, df[f'com_v{axis}_des'].values, '--', color=CB[6], label='desired')
+        ax.set_ylabel(f'v{axis} [m/s]'); ax.set_title(f'CoM v{axis}'); ax.legend()
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'com_task', 'comparison', 'velocity.png')
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC CoM Task — Velocity Error', fontsize=13)
+    for ax, axis in zip(axes, ['x', 'y', 'z']):
+        err = df[f'com_v{axis}_des'].values - df[f'com_v{axis}'].values
+        ax.plot(t, err, color=CB[6])
+        ax.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+        ax.set_ylabel(f'err v{axis} [m/s]'); ax.set_title(f'CoM v{axis} error')
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'com_task', 'error', 'velocity_error.png')
+
+    if 'com_ax_des' not in df.columns:
+        return
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC CoM Task — Desired Acceleration', fontsize=13)
+    for ax, axis, c in zip(axes, ['x', 'y', 'z'], [CB[5], CB[3], CB[6]]):
+        ax.plot(t, df[f'com_a{axis}_des'].values, color=c)
+        ax.set_ylabel(f'a{axis} [m/s²]'); ax.set_title(f'CoM a{axis} des')
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'com_task', 'comparison', 'acceleration_des.png')
+
+
+def plot_wbc_wheels(df: pd.DataFrame) -> None:
+    t = _wbc_time(df)
+
+    for side, prefix in [('Left', 'wheel_l'), ('Right', 'wheel_r')]:
+        fname = prefix.replace('wheel_', '')
+
+        fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+        fig.suptitle(f'WBC {side} Wheel — Position Comparison', fontsize=13)
+        for ax, axis in zip(axes, ['x', 'y', 'z']):
+            ax.plot(t, df[f'{prefix}_{axis}'].values,     '-',  color=CB[5], label='actual')
+            ax.plot(t, df[f'{prefix}_{axis}_des'].values, '--', color=CB[6], label='desired')
+            ax.set_ylabel(f'{axis} [m]'); ax.set_title(f'{side} Wheel {axis}'); ax.legend()
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wheel_task', 'comparison', f'{fname}_position.png')
+
+        fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+        fig.suptitle(f'WBC {side} Wheel — Position Error', fontsize=13)
+        for ax, axis in zip(axes, ['x', 'y', 'z']):
+            err = df[f'{prefix}_{axis}_des'].values - df[f'{prefix}_{axis}'].values
+            ax.plot(t, err, color=CB[6])
+            ax.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+            ax.set_ylabel(f'err {axis} [m]'); ax.set_title(f'{side} Wheel {axis} error')
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wheel_task', 'error', f'{fname}_position_error.png')
+
+        if f'{prefix}_vx' not in df.columns:
+            continue
+
+        fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+        fig.suptitle(f'WBC {side} Wheel — Velocity Comparison', fontsize=13)
+        for ax, axis in zip(axes, ['x', 'y', 'z']):
+            ax.plot(t, df[f'{prefix}_v{axis}'].values,     '-',  color=CB[5], label='actual')
+            ax.plot(t, df[f'{prefix}_v{axis}_des'].values, '--', color=CB[6], label='desired')
+            ax.set_ylabel(f'v{axis} [m/s]'); ax.set_title(f'{side} Wheel v{axis}'); ax.legend()
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wheel_task', 'comparison', f'{fname}_velocity.png')
+
+        fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+        fig.suptitle(f'WBC {side} Wheel — Velocity Error', fontsize=13)
+        for ax, axis in zip(axes, ['x', 'y', 'z']):
+            err = df[f'{prefix}_v{axis}_des'].values - df[f'{prefix}_v{axis}'].values
+            ax.plot(t, err, color=CB[6])
+            ax.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+            ax.set_ylabel(f'err v{axis} [m/s]'); ax.set_title(f'{side} Wheel v{axis} error')
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wheel_task', 'error', f'{fname}_velocity_error.png')
+
+
+def plot_wbc_torso(df: pd.DataFrame) -> None:
+    # torso columns: torso_x=roll, torso_y=pitch, torso_z=yaw  (actual + desired)
+    if 'torso_x' not in df.columns:
+        print('  [skip] no torso task columns in wbc_log.txt')
+        return
+
+    t = _wbc_time(df)
+    labels   = ['Roll', 'Pitch', 'Yaw']
+    act_cols = ['torso_x',     'torso_y',     'torso_z']
+    des_cols = ['torso_x_des', 'torso_y_des', 'torso_z_des']
+
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC Torso Task — Orientation Comparison', fontsize=13)
+    for ax, lbl, ac, dc in zip(axes, labels, act_cols, des_cols):
+        if ac in df.columns:
+            ax.plot(t, df[ac].values, '-',  color=CB[5], label='actual')
+        if dc in df.columns:
+            ax.plot(t, df[dc].values, '--', color=CB[6], label='desired')
+        ax.set_ylabel(f'{lbl} [rad]'); ax.set_title(lbl); ax.legend()
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'torso_task', 'comparison', 'orientation.png')
+
+    # angular velocity desired
+    if 'torso_vx_des' not in df.columns:
+        return
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    fig.suptitle('WBC Torso Task — Desired Angular Velocity', fontsize=13)
+    for ax, axis, c in zip(axes, ['x', 'y', 'z'], [CB[5], CB[3], CB[6]]):
+        ax.plot(t, df[f'torso_v{axis}_des'].values, color=c)
+        ax.set_ylabel(f'ω{axis} [rad/s]')
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'torso_task', 'comparison', 'angular_velocity_des.png')
+
+
+def plot_wbc_solution(
+    wbc_df: pd.DataFrame,
+    js_df: pd.DataFrame | None,
+    tau_df: pd.DataFrame | None,
+    joint_names: list,
+) -> None:
+    t_wbc = _wbc_time(wbc_df)
+
+    if js_df is not None and js_df.empty:
+        js_df = None
+    if tau_df is not None and tau_df.empty:
+        tau_df = None
+
+    t_js = t_tau = None
+    if js_df is not None:
+        t_js = js_df['time_stamp_s'].values - js_df['time_stamp_s'].iloc[0]
+    if tau_df is not None and 'time_s' in tau_df.columns:
+        t_tau = tau_df['time_s'].values - tau_df['time_s'].iloc[0]
+    elif tau_df is not None:
+        t_tau = np.arange(len(tau_df)) * 0.002
+
+    for joint in joint_names:
+        sol_pos_col = f'sol_{joint}_pos'
+        sol_vel_col = f'sol_{joint}_vel'
+        sol_tau_col = f'sol_{joint}_tau'
+
+        has_solution = sol_pos_col in wbc_df.columns
+        has_js       = js_df is not None and f'{joint}_pos' in js_df.columns
+        has_tau      = tau_df is not None and f'{joint}_tau' in tau_df.columns
+
+        if not has_solution and not has_js and not has_tau:
+            print(f'  [skip] no solution/feedback data for {joint}')
+            continue
+
+        # --- comparison/{joint}.png ---
+        fig, axes = plt.subplots(3, 1, figsize=(13, 11), sharex=False)
+        fig.suptitle(f'WBC Solution vs Feedback — {joint}', fontsize=13)
+
+        ax = axes[0]
+        if has_solution:
+            ax.plot(t_wbc, wbc_df[sol_pos_col].values, '--', color=CB[6],
+                    label='WBC desired', linewidth=1.5)
+        if has_js:
+            ax.plot(t_js, js_df[f'{joint}_pos'].values, '-', color=CB[5],
+                    label='actual', linewidth=1.2)
+        ax.set_ylabel('Position [rad]'); ax.set_title('Joint Position'); ax.legend()
+
+        ax = axes[1]
+        if has_solution:
+            ax.plot(t_wbc, wbc_df[sol_vel_col].values, '--', color=CB[6],
+                    label='WBC desired', linewidth=1.5)
+        if has_js:
+            ax.plot(t_js, js_df[f'{joint}_vel'].values, '-', color=CB[5],
+                    label='actual', linewidth=1.2)
+        ax.set_ylabel('Velocity [rad/s]'); ax.set_title('Joint Velocity'); ax.legend()
+
+        ax = axes[2]
+        if has_solution:
+            ax.plot(t_wbc, wbc_df[sol_tau_col].values, '-', color=CB[3],
+                    label='WBC tau', linewidth=1.5)
+        if has_tau:
+            ax.plot(t_tau, tau_df[f'{joint}_tau'].values, '--', color=CB[1],
+                    label='commanded (PD+FF)', linewidth=1.2)
+        if has_js and f'{joint}_effort' in js_df.columns:
+            ax.plot(t_js, js_df[f'{joint}_effort'].values, ':', color=CB[7],
+                    label='measured effort', linewidth=1.0, alpha=0.8)
+        ax.set_xlabel('Time [s]'); ax.set_ylabel('Torque [Nm]')
+        ax.set_title('Joint Torque'); ax.legend()
+
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wbc_solution', 'comparison', f'{joint}.png')
+
+        # --- error/{joint}_error.png ---
+        if has_solution and has_js:
+            pos_err = wbc_df[sol_pos_col].values - np.interp(
+                t_wbc, t_js, js_df[f'{joint}_pos'].values)
+            vel_err = wbc_df[sol_vel_col].values - np.interp(
+                t_wbc, t_js, js_df[f'{joint}_vel'].values)
+
+            fig, (ax_p, ax_v) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
+            fig.suptitle(f'WBC Solution Error — {joint}', fontsize=13)
+
+            ax_p.plot(t_wbc, pos_err, color=CB[6])
+            ax_p.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+            ax_p.set_ylabel('err [rad]'); ax_p.set_title('Position error (WBC desired − actual)')
+
+            ax_v.plot(t_wbc, vel_err, color=CB[3])
+            ax_v.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
+            ax_v.set_ylabel('err [rad/s]'); ax_v.set_title('Velocity error (WBC desired − actual)')
+            ax_v.set_xlabel('Time [s]')
+
+            fig.tight_layout()
+            save(fig, 'wbc', 'wbc', 'wbc_solution', 'error', f'{joint}_error.png')
+
+    # --- all_torques overview ---
+    sol_tau_cols = [c for c in wbc_df.columns if c.startswith('sol_') and c.endswith('_tau')]
+    if sol_tau_cols:
+        fig, ax = plt.subplots(figsize=(13, 6))
+        ax.set_title('WBC Output Torques — All Joints')
+        for i, col in enumerate(sol_tau_cols):
+            name = col.replace('sol_', '').replace('_tau', '')
+            ax.plot(t_wbc, wbc_df[col].values, color=CB[i % len(CB)], label=name)
+        ax.set_xlabel('Time [s]'); ax.set_ylabel('Torque [Nm]')
+        ax.legend(ncol=2, fontsize=8)
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wbc_solution', 'all_torques.png')
+
+
+def plot_wbc(log_dir: Path, joint_names: list) -> None:
+    wbc_df = _load_wbc(log_dir)
+    if wbc_df is None or wbc_df.empty:
+        print('  [skip] wbc_log.txt has no data rows yet')
+        return
+    js_df  = _load_joint_state(log_dir)
+    tau_df = _load_tau_commanded(log_dir)
+
+    plot_wbc_com(wbc_df)
+    plot_wbc_wheels(wbc_df)
+    plot_wbc_torso(wbc_df)
+    plot_wbc_solution(wbc_df, js_df, tau_df, joint_names)
+
+
+# ---------------------------------------------------------------------------
+# timings  (timing_log.txt)
+# ---------------------------------------------------------------------------
+
+def plot_timings(log_dir: Path) -> None:
+    log = log_dir / 'timing_log.txt'
+    if not log.exists():
+        warn_missing(log)
+        return
+
+    df = pd.read_csv(log)
+    if df.empty:
+        print('  [skip] no timing data')
+        return
+
+    budget_us = 2000  # 500 Hz → 2 ms budget
+    cycles = np.arange(len(df))
+
+    # Columns to plot individually (skip columns that are all zero)
+    candidates = {
+        'time_mpc_us':    ('MPC',    CB[5]),
+        'time_wbc_us':    ('WBC',    CB[3]),
+        'time_filter_us': ('Filter', CB[2]),
+    }
+    individual = {col: meta for col, meta in candidates.items()
+                  if col in df.columns and df[col].any()}
+
+    # --- One figure per individual timing ---
+    for col, (lbl, c) in individual.items():
+        data = df[col].values
+        avg  = data.mean()
+        fig, (ax_t, ax_h) = plt.subplots(2, 1, figsize=(13, 8),
+                                          gridspec_kw={'height_ratios': [2, 1]})
+        fig.suptitle(f'{lbl} Timing', fontsize=13)
+
+        ax_t.plot(cycles, data, color=c, lw=0.8)
+        ax_t.axhline(avg, linestyle='--', color=CB[0], alpha=0.7,
+                     label=f'avg = {avg:.1f} µs')
+        ax_t.set_ylabel('Time [µs]'); ax_t.set_xlabel('Control cycle')
+        ax_t.set_title(f'{lbl} execution time per cycle'); ax_t.legend()
+
+        ax_h.hist(data, bins=60, color=c, alpha=0.8)
+        ax_h.axvline(avg, linestyle='--', color=CB[0], alpha=0.7,
+                     label=f'avg = {avg:.1f} µs')
+        ax_h.set_xlabel('Time [µs]'); ax_h.set_ylabel('Count')
+        ax_h.set_title('Distribution'); ax_h.legend()
+
+        fig.tight_layout()
+        save(fig, 'timings', 'timings', f'{lbl.lower()}_timing.png')
+
+    # --- Total timing figure ---
+    if 'total_time_us' not in df.columns:
+        return
+
+    total = df['total_time_us'].values
+    avg_total = total.mean()
+    pct_over  = 100.0 * (total > budget_us).mean()
+
+    fig, (ax_t, ax_h) = plt.subplots(2, 1, figsize=(13, 8),
+                                      gridspec_kw={'height_ratios': [2, 1]})
+    fig.suptitle('Total Cycle Time', fontsize=13)
+
+    # stacked area: show contribution of each component
+    bottom = np.zeros(len(df))
+    for col, (lbl, c) in individual.items():
+        ax_t.fill_between(cycles, bottom, bottom + df[col].values,
+                          color=c, alpha=0.6, label=lbl)
+        bottom += df[col].values
+    ax_t.plot(cycles, total, color=CB[0], lw=0.8, label='total')
+    ax_t.axhline(budget_us, linestyle='--', color=CB[6],
+                 label=f'budget {budget_us} µs')
+    ax_t.axhline(avg_total, linestyle=':', color=CB[0], alpha=0.7,
+                 label=f'avg {avg_total:.1f} µs')
+    ax_t.set_ylabel('Time [µs]'); ax_t.set_xlabel('Control cycle')
+    ax_t.set_title('Per-cycle breakdown'); ax_t.legend(ncol=3, fontsize=8)
+
+    ax_h.hist(total, bins=60, color=CB[6], alpha=0.8)
+    ax_h.axvline(budget_us, linestyle='--', color=CB[0],
+                 label=f'budget {budget_us} µs  ({pct_over:.1f}% over)')
+    ax_h.axvline(avg_total, linestyle=':', color=CB[0], alpha=0.7,
+                 label=f'avg {avg_total:.1f} µs')
+    ax_h.set_xlabel('Total time [µs]'); ax_h.set_ylabel('Count')
+    ax_h.set_title('Distribution of total cycle time'); ax_h.legend()
+
+    fig.tight_layout()
+    save(fig, 'timings', 'timings', 'total_timing.png')
+
+
+# ---------------------------------------------------------------------------
+# feedback — raw sensor data only, no comparison
+# ---------------------------------------------------------------------------
+
+def plot_feedback_imu(log_dir: Path) -> None:
+    df = _load_imu(log_dir)
+    if df is None:
+        return
+
+    t = df['time_s'].values - df['time_s'].iloc[0]
+
+    # --- Angular velocity ---
+    fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
+    fig.suptitle('IMU — Angular Velocity', fontsize=13)
+    for ax, axis, c in zip(axes, ['x', 'y', 'z'], [CB[5], CB[3], CB[6]]):
+        data = df[f'w{axis}'].values
+        avg  = float(np.mean(data))
+        ax.plot(t, data, color=c)
+        ax.axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.4f}')
+        ax.set_ylabel(f'ω{axis} [rad/s]'); ax.legend()
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'feedback', 'feedback', 'imu', 'angular_velocity.png')
+
+    # --- Linear acceleration ---
+    fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
+    fig.suptitle('IMU — Linear Acceleration', fontsize=13)
+    for ax, axis, c in zip(axes, ['x', 'y', 'z'], [CB[2], CB[1], CB[7]]):
+        data = df[f'a{axis}'].values
+        avg  = float(np.mean(data))
+        ax.plot(t, data, color=c)
+        ax.axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.4f}')
+        ax.set_ylabel(f'a{axis} [m/s²]'); ax.legend()
+    axes[-1].set_xlabel('Time [s]')
+    fig.tight_layout()
+    save(fig, 'feedback', 'feedback', 'imu', 'linear_acceleration.png')
+
+    # --- Orientation (RPY from quaternion) ---
+    if all(c in df.columns for c in ['qx', 'qy', 'qz', 'qw']):
+        q = _fix_quat_continuity(df[['qx', 'qy', 'qz', 'qw']].values)
+        roll, pitch, yaw = _quat_to_rpy(q[:, 0], q[:, 1], q[:, 2], q[:, 3])
+        fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
+        fig.suptitle('IMU — Orientation (RPY)', fontsize=13)
+        for ax, d, lbl, c in zip(
+            axes,
+            [np.unwrap(roll), np.unwrap(pitch), np.unwrap(yaw)],
+            ['Roll', 'Pitch', 'Yaw'],
+            [CB[1], CB[2], CB[5]],
+        ):
+            ax.plot(t, d, color=c)
+            ax.set_ylabel(f'{lbl} [rad]')
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'feedback', 'feedback', 'imu', 'orientation.png')
+
+
+def plot_feedback_joints(log_dir: Path, joint_names: list) -> None:
+    df = _load_joint_state(log_dir)
+    if df is None:
+        return
+
+    t = df['time_stamp_s'].values - df['time_stamp_s'].iloc[0]
+
+    for joint in joint_names:
+        pos_col = f'{joint}_pos'
+        vel_col = f'{joint}_vel'
+        eff_col = f'{joint}_effort'
+
+        if pos_col not in df.columns:
+            print(f'  [skip] no feedback data for {joint}')
+            continue
+
+        fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        fig.suptitle(f'Feedback — {joint}', fontsize=13)
+
+        conf = [
+            (pos_col, 'Position [rad]',   'Position',  CB[5]),
+            (vel_col, 'Velocity [rad/s]', 'Velocity',  CB[3]),
+            (eff_col, 'Effort [Nm]',      'Effort',    CB[6]),
+        ]
+        for ax, (col, ylabel, title, c) in zip(axes, conf):
+            if col in df.columns:
+                data = df[col].values
+                avg  = float(np.mean(data))
+                ax.plot(t, data, color=c)
+                ax.axhline(avg, linestyle='--', color=CB[0], alpha=0.55,
+                           label=f'avg={avg:.3f}')
+            ax.set_ylabel(ylabel); ax.set_title(title); ax.legend()
+
+        axes[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        save(fig, 'feedback', 'feedback', 'joints', f'{joint}.png')
+
+
+# ---------------------------------------------------------------------------
+# Legacy groups
 # ---------------------------------------------------------------------------
 
 def plot_encoder_wheels(log_dir: Path) -> None:
@@ -182,186 +752,9 @@ def plot_encoder_wheels(log_dir: Path) -> None:
     for row_axes in axes:
         for ax in row_axes:
             ax.legend(fontsize=7)
-
     fig.tight_layout()
-    save(fig, 'encoder', 'encoder_wheels', 'wheel_data.png')
+    save(fig, 'encoder', 'encoder', 'wheel_data.png')
 
-
-# ---------------------------------------------------------------------------
-# State estimation  (kf_test.csv)
-# ---------------------------------------------------------------------------
-
-def plot_estimation(log_dir: Path) -> None:
-    csv = log_dir / 'kf_test.csv'
-    if not csv.exists():
-        warn_missing(csv)
-        return
-
-    df = pd.read_csv(csv)
-    t = df['t'].values - df['t'].iloc[0]
-
-    # --- Odometry vs Estimated Position ---
-    fig, ax = plt.subplots(figsize=(13, 5))
-    for axis, c_odom, c_est, ls_odom in zip(
-        ['x', 'y', 'z'],
-        [CB[5], CB[3], CB[6]],
-        [CB[2], CB[1], CB[7]],
-        ['--', '-.', ':'],
-    ):
-        ax.plot(t, df[f'p_odom_{axis}'], ls_odom, color=c_odom, alpha=0.8, label=f'odom {axis}')
-        ax.plot(t, df[f'p_est_{axis}'],  '-',      color=c_est,             label=f'est  {axis}')
-    ax.set_xlabel('Time [s]'); ax.set_ylabel('Position [m]')
-    ax.set_title('Odometry vs Estimated Base Position'); ax.legend(ncol=2)
-    fig.tight_layout()
-    save(fig, 'none', 'estimation', 'odom_vs_est_position.png')
-
-    # --- XY Position Error (norm) ---
-    pos_err = np.sqrt((df['p_est_x'] - df['p_odom_x'])**2 +
-                      (df['p_est_y'] - df['p_odom_y'])**2)
-    fig, ax = plt.subplots(figsize=(13, 4))
-    ax.plot(t, pos_err, color=CB[6])
-    ax.set_xlabel('Time [s]'); ax.set_ylabel('‖error‖ [m]')
-    ax.set_title('Base XY Position: ‖Estimate − Odometry‖')
-    fig.tight_layout()
-    save(fig, 'none', 'estimation', 'position_error.png')
-
-    # --- Velocity estimate ---
-    fig, ax = plt.subplots(figsize=(13, 5))
-    _xyz_lines(ax, t,
-               df['v_est_x'].values, df['v_est_y'].values, df['v_est_z'].values)
-    ax.set_xlabel('Time [s]'); ax.set_ylabel('Velocity [m/s]')
-    ax.set_title('Estimated Base Velocity')
-    fig.tight_layout()
-    save(fig, 'none', 'estimation', 'velocity.png')
-
-    # --- Contact points ---
-    fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
-    fig.suptitle('Estimated Contact Points')
-    for ax, side in zip(axes, ['cL', 'cR']):
-        _xyz_lines(ax, t,
-                   df[f'p_{side}_est_x'].values,
-                   df[f'p_{side}_est_y'].values,
-                   df[f'p_{side}_est_z'].values)
-        ax.set_ylabel('Position [m]'); ax.set_title(f'{side} Contact Point')
-    axes[-1].set_xlabel('Time [s]')
-    fig.tight_layout()
-    save(fig, 'none', 'estimation', 'contact_points.png')
-
-    # --- XY Trajectory (top view) ---
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.plot(df['p_odom_x'], df['p_odom_y'], '--', color=CB[5], label='Base odom')
-    ax.plot(df['p_est_x'],  df['p_est_y'],        color=CB[2], label='Base est')
-    ax.plot(df['p_cL_est_x'], df['p_cL_est_y'],   color=CB[6], label='cL')
-    ax.plot(df['p_cR_est_x'], df['p_cR_est_y'],   color=CB[7], label='cR')
-    ax.set_xlabel('X [m]'); ax.set_ylabel('Y [m]')
-    ax.set_title('XY Trajectories (Top View)')
-    ax.set_aspect('equal'); ax.legend()
-    fig.tight_layout()
-    save(fig, 'none', 'estimation', 'xy_trajectory.png')
-
-    # --- Filter analysis (6-panel) ---
-    px = df['p_est_x'].values; py = df['p_est_y'].values; pz = df['p_est_z'].values
-    vx_d = np.gradient(px, t); vy_d = np.gradient(py, t); vz_d = np.gradient(pz, t)
-
-    has_quat = all(c in df.columns for c in ['qx', 'qy', 'qz', 'qw'])
-    fig, axes = plt.subplots(3, 2, figsize=(16, 12), sharex=True)
-    fig.suptitle('State Estimation — Filter Analysis', fontsize=13)
-
-    def _panel(ax, x, y, z, title, ylabel):
-        _xyz_lines(ax, t, x, y, z)
-        ax.set_title(title); ax.set_ylabel(ylabel)
-
-    _panel(axes[0, 0], px, py, pz,                           'Base Position Estimate',  'Position [m]')
-    _panel(axes[1, 0], df['p_cL_est_x'].values,
-                       df['p_cL_est_y'].values,
-                       df['p_cL_est_z'].values,              'cL Position Estimate',    'Position [m]')
-    _panel(axes[2, 0], df['p_cR_est_x'].values,
-                       df['p_cR_est_y'].values,
-                       df['p_cR_est_z'].values,              'cR Position Estimate',    'Position [m]')
-    _panel(axes[0, 1], df['v_est_x'].values,
-                       df['v_est_y'].values,
-                       df['v_est_z'].values,                 'Velocity Estimate',       'Velocity [m/s]')
-
-    for c, d, lbl in zip([CB[5], CB[3], CB[6]], [vx_d, vy_d, vz_d], ['vx_diff', 'vy_diff', 'vz_diff']):
-        axes[1, 1].plot(t, d, '--', color=c, label=lbl)
-    axes[1, 1].set_title('Velocity from Differentiated Position')
-    axes[1, 1].set_ylabel('Velocity [m/s]'); axes[1, 1].legend()
-
-    if has_quat:
-        q = _fix_quat_continuity(df[['qx', 'qy', 'qz', 'qw']].values)
-        roll, pitch, yaw = _quat_to_rpy(q[:, 0], q[:, 1], q[:, 2], q[:, 3])
-        for c, d, lbl in zip([CB[1], CB[2], CB[5]],
-                              [np.unwrap(roll), np.unwrap(pitch), np.unwrap(yaw)],
-                              ['roll', 'pitch', 'yaw']):
-            axes[2, 1].plot(t, d, color=c, label=lbl)
-        axes[2, 1].set_title('Orientation (Roll Pitch Yaw)')
-        axes[2, 1].set_ylabel('Angle [rad]'); axes[2, 1].legend()
-    else:
-        axes[2, 1].set_visible(False)
-
-    axes[2, 0].set_xlabel('Time [s]'); axes[2, 1].set_xlabel('Time [s]')
-    fig.tight_layout()
-    save(fig, 'estimation', 'estimation', 'filter_analysis.png')
-
-
-# ---------------------------------------------------------------------------
-# IMU  (imu_log.txt)
-# ---------------------------------------------------------------------------
-
-def plot_imu(log_dir: Path) -> None:
-    log_path = log_dir / 'imu_log.txt'
-    if not log_path.exists():
-        warn_missing(log_path)
-        return
-
-    ts_re  = re.compile(r'Timestamp:\s+([0-9]+\.[0-9]+)')
-    ang_re = re.compile(r'angular_velocity:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)')
-    acc_re = re.compile(r'linear_acceleration:\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)')
-
-    timestamps, wx, wy, wz, aax, aay, aaz = [], [], [], [], [], [], []
-    cur_ts = None
-    for line in log_path.read_text().splitlines():
-        ts = ts_re.search(line)
-        if ts:
-            cur_ts = float(ts.group(1))
-        an = ang_re.search(line)
-        ac = acc_re.search(line)
-        if an and ac and cur_ts is not None:
-            timestamps.append(cur_ts)
-            wx.append(float(an.group(1))); wy.append(float(an.group(2))); wz.append(float(an.group(3)))
-            aax.append(float(ac.group(1))); aay.append(float(ac.group(2))); aaz.append(float(ac.group(3)))
-
-    if not timestamps:
-        print('  [skip] no IMU data found')
-        return
-
-    t = np.array(timestamps) - timestamps[0]
-    fig, axs = plt.subplots(3, 2, sharex=True, figsize=(15, 10))
-    fig.suptitle('IMU: Angular Velocity and Linear Acceleration', fontsize=13)
-
-    ang_conf = list(zip([wx, wy, wz], ['ωx [rad/s]', 'ωy [rad/s]', 'ωz [rad/s]'], [CB[5], CB[3], CB[6]]))
-    acc_conf = list(zip([aax, aay, aaz], ['ax [m/s²]', 'ay [m/s²]', 'az [m/s²]'], [CB[2], CB[1], CB[7]]))
-
-    for i, (data, ylabel, c) in enumerate(ang_conf):
-        avg = np.mean(data)
-        axs[i, 0].plot(t, data, color=c, label=ylabel.split('[')[0].strip())
-        axs[i, 0].axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.4f}')
-        axs[i, 0].set_ylabel(ylabel); axs[i, 0].legend()
-
-    for i, (data, ylabel, c) in enumerate(acc_conf):
-        avg = np.mean(data)
-        axs[i, 1].plot(t, data, color=c, label=ylabel.split('[')[0].strip())
-        axs[i, 1].axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.4f}')
-        axs[i, 1].set_ylabel(ylabel); axs[i, 1].legend()
-
-    axs[2, 0].set_xlabel('Time [s]'); axs[2, 1].set_xlabel('Time [s]')
-    fig.tight_layout()
-    save(fig, 'imu', 'imu', 'imu_data.png')
-
-
-# ---------------------------------------------------------------------------
-# Simple odometry  (odom.txt)
-# ---------------------------------------------------------------------------
 
 def plot_odom(log_dir: Path) -> None:
     log_path = log_dir / 'odom.txt'
@@ -396,25 +789,18 @@ def plot_odom(log_dir: Path) -> None:
     t = np.array(timestamps) - timestamps[0]
     fig, axs = plt.subplots(3, 2, sharex=True, figsize=(14, 9))
     fig.suptitle('Robot Odometry: Position and Angular Velocity', fontsize=13)
-
     for i, (data, ylabel, c) in enumerate(zip(
         [xs, ys, zs], ['x [m]', 'y [m]', 'z [m]'], [CB[5], CB[3], CB[6]]
     )):
         axs[i, 0].plot(t, data, color=c); axs[i, 0].set_ylabel(ylabel)
-
     for i, (data, ylabel, c) in enumerate(zip(
         [wx, wy, wz], ['ωx [rad/s]', 'ωy [rad/s]', 'ωz [rad/s]'], [CB[2], CB[1], CB[7]]
     )):
         axs[i, 1].plot(t, data, color=c); axs[i, 1].set_ylabel(ylabel)
-
     axs[2, 0].set_xlabel('Time [s]'); axs[2, 1].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'odom', 'odometry', 'simple_odom.png')
+    save(fig, 'odom', 'odom', 'simple_odom.png')
 
-
-# ---------------------------------------------------------------------------
-# Robot odometry CSV  (robot_odom.csv)
-# ---------------------------------------------------------------------------
 
 def plot_robot_odometry(log_dir: Path) -> None:
     csv = log_dir / 'robot_odom.csv'
@@ -425,95 +811,72 @@ def plot_robot_odometry(log_dir: Path) -> None:
     df = pd.read_csv(csv); df.columns = df.columns.str.strip()
     t = df['t'].values
 
-    px = df['p_odom_x'].values; py = df['p_odom_y'].values; pz = df['p_odom_z'].values
-    vx_d = np.gradient(px, t); vy_d = np.gradient(py, t); vz_d = np.gradient(pz, t)
+    fig, axes = plt.subplots(3, 2, figsize=(16, 12), sharex=True)
+    fig.suptitle('Robot Odometry (CSV)', fontsize=13)
 
     def _panel(ax, x, y, z, title, ylabel):
         _xyz_lines(ax, t, x, y, z)
         ax.set_title(title); ax.set_ylabel(ylabel)
 
-    fig, axes = plt.subplots(4, 2, figsize=(16, 14), sharex=True)
-    fig.suptitle('Robot Odometry (CSV)', fontsize=13)
-
-    _panel(axes[0, 0], px, py, pz,
-           'Base Position (Odom)', 'Position [m]')
+    _panel(axes[0, 0], df['p_odom_x'].values, df['p_odom_y'].values, df['p_odom_z'].values,
+           'Base Position', 'Position [m]')
     _panel(axes[0, 1], df['v_odom_x'].values, df['v_odom_y'].values, df['v_odom_z'].values,
-           'Base Velocity (Odom)', 'Velocity [m/s]')
+           'Base Velocity', 'Velocity [m/s]')
     _panel(axes[1, 0], df['p_cL_odom_x'].values, df['p_cL_odom_y'].values, df['p_cL_odom_z'].values,
-           'Left Contact Position (Odom)', 'Position [m]')
+           'Left Contact (Odom)', 'Position [m]')
     _panel(axes[1, 1], df['p_cR_odom_x'].values, df['p_cR_odom_y'].values, df['p_cR_odom_z'].values,
-           'Right Contact Position (Odom)', 'Position [m]')
+           'Right Contact (Odom)', 'Position [m]')
 
-    for c, d, lbl in zip([CB[5], CB[3], CB[6]], [vx_d, vy_d, vz_d], ['vx_diff', 'vy_diff', 'vz_diff']):
+    px = df['p_odom_x'].values; py = df['p_odom_y'].values; pz = df['p_odom_z'].values
+    vx_d = np.gradient(px, t); vy_d = np.gradient(py, t); vz_d = np.gradient(pz, t)
+    for c, d, lbl in zip([CB[5], CB[3], CB[6]], [vx_d, vy_d, vz_d], ['vx', 'vy', 'vz']):
         axes[2, 0].plot(t, d, '--', color=c, label=lbl)
-    axes[2, 0].set_title('Velocity from Differentiated Position')
-    axes[2, 0].set_ylabel('Velocity [m/s]'); axes[2, 0].legend()
+    axes[2, 0].set_title('Velocity (Differentiated)'); axes[2, 0].set_ylabel('Vel [m/s]'); axes[2, 0].legend()
 
-    has_wheels = 'w_l_odom' in df.columns and 'w_r_odom' in df.columns
-    if has_wheels:
+    if 'w_l_odom' in df.columns:
         axes[2, 1].plot(t, df['w_l_odom'].values, color=CB[5], label='left')
         axes[2, 1].plot(t, df['w_r_odom'].values, color=CB[6], label='right')
-        wl_avg = df['w_l_odom'].mean(); wr_avg = df['w_r_odom'].mean()
-        axes[2, 1].axhline(wl_avg, linestyle='--', color=CB[5], alpha=0.6,
-                           label=f'avg L={wl_avg:.3f}')
-        axes[2, 1].axhline(wr_avg, linestyle='--', color=CB[6], alpha=0.6,
-                           label=f'avg R={wr_avg:.3f}')
-        axes[2, 1].set_title('Wheel Angular Velocity')
-        axes[2, 1].set_ylabel('Angular Vel [rad/s]'); axes[2, 1].legend()
+        axes[2, 1].set_title('Wheel Angular Velocity'); axes[2, 1].set_ylabel('[rad/s]'); axes[2, 1].legend()
 
-    for ax in [axes[3, 0], axes[3, 1]]:
-        ax.set_visible(False)
-    axes[2, 0].set_xlabel('Time [s]'); axes[2, 1].set_xlabel('Time [s]')
+    for col in range(2):
+        axes[2, col].set_xlabel('Time [s]')
     fig.tight_layout()
-    save(fig, 'odom', 'odometry', 'robot_odom.png')
+    save(fig, 'odom', 'odom', 'robot_odom.png')
 
 
-# ---------------------------------------------------------------------------
-# MPC reference plan  (/tmp/plan/x.txt)
-# ---------------------------------------------------------------------------
-
-def plot_plan(tmp_dir: Path) -> None:
-    x_path = tmp_dir / 'plan' / 'x.txt'
+def plot_plan(log_dir: Path) -> None:
+    x_path = log_dir / 'plan' / 'x.txt'
     if not x_path.exists():
         warn_missing(x_path)
         return
 
     x = np.loadtxt(x_path, ndmin=2)
     DT_MS = 2; VEC_OFF_Y = 0.567 / 2
-
     pcom_x, pcom_y, pcom_z = x[:, 0], x[:, 1], x[:, 2]
     c_x,    c_y,    c_z    = x[:, 6], x[:, 7], x[:, 8]
     theta = x[:, 10]
-    off_x = -np.sin(theta) * VEC_OFF_Y
-    off_y =  np.cos(theta) * VEC_OFF_Y
+    off_x = -np.sin(theta) * VEC_OFF_Y; off_y = np.cos(theta) * VEC_OFF_Y
     cL_x, cL_y = c_x + off_x, c_y + off_y
     cR_x, cR_y = c_x - off_x, c_y - off_y
     t_ms = np.arange(x.shape[0]) * DT_MS
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6), layout='constrained')
     ax0, ax1 = axes
-
     ax0.plot(pcom_x, pcom_y, color=CB[5], lw=2, label='CoM')
-    ax0.plot(c_x,    c_y,    '--', color=CB[1], lw=2, label='c')
-    ax0.plot(cL_x,   cL_y,   '-.', color=CB[3], lw=1.5, label='cL')
-    ax0.plot(cR_x,   cR_y,   ':',  color=CB[6], lw=1.5, label='cR')
-    ax0.plot(pcom_x[0],  pcom_y[0],  'o',  color=CB[0], ms=8, label='start')
-    ax0.plot(pcom_x[-1], pcom_y[-1], 'x',  color=CB[7], ms=10, mew=2, label='end')
-    all_x = np.concatenate([pcom_x, c_x, cL_x, cR_x])
-    all_y = np.concatenate([pcom_y, c_y, cL_y, cR_y])
-    pad = lambda v: 0.1 * (v.max() - v.min() + 1e-9)
-    ax0.set_xlim(all_x.min() - pad(all_x), all_x.max() + pad(all_x))
-    ax0.set_ylim(all_y.min() - pad(all_y), all_y.max() + pad(all_y))
+    ax0.plot(c_x, c_y, '--', color=CB[1], lw=2, label='c')
+    ax0.plot(cL_x, cL_y, '-.', color=CB[3], lw=1.5, label='cL')
+    ax0.plot(cR_x, cR_y, ':',  color=CB[6], lw=1.5, label='cR')
+    ax0.plot(pcom_x[0], pcom_y[0], 'o', color=CB[0], ms=8)
+    ax0.plot(pcom_x[-1], pcom_y[-1], 'x', color=CB[7], ms=10, mew=2)
     ax0.set_xlabel('x [m]'); ax0.set_ylabel('y [m]')
     ax0.set_title('X–Y Reference Plan'); ax0.legend()
-
     ax1.plot(t_ms, pcom_z, color=CB[5], lw=2, label='CoM z')
-    ax1.plot(t_ms, c_z,    '--', color=CB[1], lw=2, label='c z')
+    ax1.plot(t_ms, c_z, '--', color=CB[1], lw=2, label='c z')
     ax1.set_xlabel('t [ms]'); ax1.set_ylabel('z [m]')
     ax1.set_title('Z Reference Plan'); ax1.legend()
     save(fig, 'plan', 'plan', 'reference_plan.png')
 
-    jump_path = tmp_dir / 'plan' / 'jump_traj.txt'
+    jump_path = log_dir / 'plan' / 'jump_traj.txt'
     if jump_path.exists():
         lines_txt = jump_path.read_text().strip().splitlines()
         t0_j = float(lines_txt[0].strip().split()[0])
@@ -528,345 +891,6 @@ def plot_plan(tmp_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Controller timings  (/tmp/timing_log.txt)
-# ---------------------------------------------------------------------------
-
-def plot_timings(tmp_dir: Path) -> None:
-    log = tmp_dir / 'timing_log.txt'
-    if not log.exists():
-        warn_missing(log)
-        return
-
-    mpc_t, wbc_t, total_t = [], [], []
-    for line in log.read_text().splitlines()[1:]:
-        parts = line.strip().split(',')
-        if len(parts) >= 3:
-            try:
-                mpc_t.append(float(parts[0]))
-                wbc_t.append(float(parts[1]))
-                total_t.append(float(parts[2]))
-            except ValueError:
-                continue
-
-    if not mpc_t:
-        print('  [skip] no timing data')
-        return
-
-    cycles = np.arange(len(mpc_t))
-    fig, ax = plt.subplots(figsize=(13, 5))
-    ax.plot(cycles, mpc_t,   color=CB[5], label='MPC')
-    ax.plot(cycles, wbc_t,   color=CB[3], label='WBC')
-    ax.plot(cycles, total_t, color=CB[6], label='Total')
-    for data, c, lbl in zip(
-        [mpc_t, wbc_t, total_t], [CB[5], CB[3], CB[6]], ['MPC', 'WBC', 'Total']
-    ):
-        avg = np.mean(data)
-        ax.axhline(avg, linestyle='--', color=c, alpha=0.65, label=f'{lbl} avg={avg:.1f} µs')
-    ax.set_xlabel('Control cycle'); ax.set_ylabel('Time [µs]')
-    ax.set_title('Controller Timing'); ax.legend(ncol=2)
-    fig.tight_layout()
-    save(fig, 'timings', 'timings', 'controller_timing.png')
-
-
-# ---------------------------------------------------------------------------
-# WBC tracking errors  (/tmp/wbc_log.txt  +  /tmp/plan/x.txt)
-# ---------------------------------------------------------------------------
-
-def plot_wbc_tracking(tmp_dir: Path) -> None:
-    wbc_log = tmp_dir / 'wbc_log.txt'
-    if not wbc_log.exists():
-        warn_missing(wbc_log)
-        return
-
-    log_data = np.loadtxt(wbc_log, delimiter=',', skiprows=1)
-    t_ms    = log_data[:, 0]
-    com_act = log_data[:, 1:4];  com_des = log_data[:, 4:7]
-    wl_act  = log_data[:, 7:10]; wl_des  = log_data[:, 10:13]
-    wr_act  = log_data[:, 13:16]; wr_des = log_data[:, 16:19]
-
-    fig, axs = plt.subplots(3, 1, figsize=(13, 11), sharex=True)
-    fig.suptitle('WBC Tracking Errors (desired − actual)', fontsize=13)
-    labels = ['x', 'y', 'z']
-    for ax, err, title in zip(
-        axs,
-        [com_des - com_act, wl_des - wl_act, wr_des - wr_act],
-        ['CoM Error', 'Left Wheel Error', 'Right Wheel Error'],
-    ):
-        for c, d, lbl in zip([CB[5], CB[3], CB[6]], err.T, labels):
-            ax.plot(t_ms, d, color=c, label=f'{lbl}')
-        ax.set_ylabel('Error [m]'); ax.set_title(title); ax.legend()
-    axs[-1].set_xlabel('Time [ms]')
-    plt.subplots_adjust(hspace=0.35)
-    save(fig, 'wbc', 'wbc', 'tracking_errors.png')
-
-    plan_file = tmp_dir / 'plan' / 'x.txt'
-    if plan_file.exists():
-        plan_data = np.loadtxt(plan_file, ndmin=2)
-        com_plan  = plan_data[:, 0:3]
-        n_cur = len(com_act)
-        if len(com_plan) < n_cur:
-            com_plan = np.vstack([com_plan,
-                                   np.tile(com_plan[-1], (n_cur - len(com_plan), 1))])
-        else:
-            com_plan = com_plan[:n_cur]
-        err_plan = com_plan - com_act[:n_cur]
-        t_c = t_ms[:n_cur]
-
-        fig2, axs2 = plt.subplots(3, 1, figsize=(13, 11), sharex=True)
-        fig2.suptitle('CoM Error: Reference Plan − Current', fontsize=13)
-        for ax, c, d, lbl in zip(axs2, [CB[5], CB[3], CB[6]], err_plan.T, labels):
-            ax.plot(t_c, d, color=c)
-            ax.set_ylabel('Error [m]')
-            ax.set_title(f'CoM {lbl} error (reference − current)')
-        axs2[-1].set_xlabel('Time [ms]')
-        plt.subplots_adjust(hspace=0.35)
-        save(fig2, 'wbc', 'wbc', 'reference_plan_errors.png')
-
-
-# ---------------------------------------------------------------------------
-# MPC prediction snapshot  (/tmp/mpc_data/{t:.6f}/x.txt + u.txt)
-# ---------------------------------------------------------------------------
-
-def plot_mpc_snapshot(tmp_dir: Path, t_msec: float) -> None:
-    folder   = tmp_dir / 'mpc_data' / f'{t_msec:.6f}'
-    x_path   = folder / 'x.txt'
-    u_path   = folder / 'u.txt'
-    if not x_path.exists():
-        warn_missing(x_path)
-        return
-
-    data   = np.loadtxt(x_path)
-    data_u = np.loadtxt(u_path)
-    com_x, com_y, com_z = data[:, 0], data[:, 1], data[:, 2]
-    pc_x,  pc_y         = data[:, 6], data[:, 7]
-    fz                  = data_u[:, -1]
-
-    steps = np.arange(len(com_x))
-    fig, axs = plt.subplots(4, 1, figsize=(10, 12), sharex=True)
-    fig.suptitle(f'MPC Prediction Snapshot — t = {t_msec:.3f} ms', fontsize=13)
-
-    axs[0].plot(np.arange(len(fz)), fz, color=CB[6])
-    axs[0].set_ylabel('Force Z [N]'); axs[0].set_title('Vertical Force')
-
-    axs[1].plot(steps, com_x, color=CB[5], label='CoM X')
-    axs[1].plot(steps, pc_x,  color=CB[1], label='Pc X')
-    axs[1].set_ylabel('X [m]'); axs[1].legend()
-
-    axs[2].plot(steps, com_y, color=CB[5], label='CoM Y')
-    axs[2].plot(steps, pc_y,  color=CB[1], label='Pc Y')
-    axs[2].set_ylabel('Y [m]'); axs[2].legend()
-
-    axs[3].plot(steps, com_z, color=CB[5], label='CoM Z')
-    axs[3].set_ylabel('Z [m]'); axs[3].set_title('CoM Z'); axs[3].legend()
-    axs[-1].set_xlabel('Prediction step')
-
-    fig.tight_layout()
-    save(fig, 'mpc', 'mpc', f'snapshot_{t_msec:.3f}.png')
-
-
-# ---------------------------------------------------------------------------
-# Joint torques / velocities  (/tmp/joint_eff.txt, /tmp/joint_vel.txt)
-# ---------------------------------------------------------------------------
-
-def plot_joint_tau(tmp_dir: Path) -> None:
-    configs = [
-        ('joint_eff.txt', 'Torque [Nm]',     'Joint Commanded Torques',    'torques'),
-        ('joint_vel.txt', 'Velocity [rad/s]', 'Joint Commanded Velocities', 'velocities'),
-    ]
-    for fname, ylabel, title, subdir in configs:
-        fpath = tmp_dir / fname
-        if not fpath.exists():
-            warn_missing(fpath)
-            continue
-        data = np.loadtxt(fpath)
-        if data.ndim == 1:
-            data = data[:, np.newaxis]
-        n_steps, n_joints = data.shape
-        t = np.arange(n_steps)
-        fig, ax = plt.subplots(figsize=(13, 5))
-        for j in range(n_joints):
-            ax.plot(t, data[:, j], color=CB[j % len(CB)], label=f'Joint {j + 1}')
-        ax.set_xlabel('Control cycle'); ax.set_ylabel(ylabel)
-        ax.set_title(title); ax.legend(ncol=max(1, n_joints // 4))
-        fig.tight_layout()
-        save(fig, 'joints', 'joints', subdir, fname.replace('.txt', '.png'))
-
-
-# ---------------------------------------------------------------------------
-# Per-joint state  (joint_state_log.txt)
-# ---------------------------------------------------------------------------
-
-def _parse_joint_state(log_path: Path, joint: str):
-    pattern = re.compile(
-        rf'(?P<time>\d+\.\d+)\s+\d+\.\d+\s+{re.escape(joint)}:\s+'
-        rf'pos:\s+(?P<pos>[-+]?\d*\.\d+)\s+vel:\s+(?P<vel>[-+]?\d*\.\d+)'
-        rf'\s+effort:\s+(?P<effort>[-+]?\d*\.\d+)'
-    )
-    times, positions, velocities, efforts = [], [], [], []
-    for line in log_path.read_text().splitlines():
-        m = pattern.search(line)
-        if m:
-            times.append(float(m.group('time')))
-            positions.append(float(m.group('pos')))
-            velocities.append(float(m.group('vel')))
-            efforts.append(float(m.group('effort')))
-    return times, positions, velocities, efforts
-
-
-def plot_joint_state(log_dir: Path, joint_names: list) -> None:
-    log_path = log_dir / 'joint_state_log.txt'
-    if not log_path.exists():
-        warn_missing(log_path)
-        return
-
-    for joint in joint_names:
-        times, pos, vel, eff = _parse_joint_state(log_path, joint)
-        if not times:
-            print(f'  [skip] no state data for {joint}')
-            continue
-        t = np.array(times) - times[0]
-
-        fig, axs = plt.subplots(3, 1, sharex=True, figsize=(12, 9))
-        fig.suptitle(f'Joint State: {joint}', fontsize=13)
-        conf = [
-            (pos, 'Position [rad]',  'Position', CB[5]),
-            (vel, 'Velocity [rad/s]','Velocity',  CB[3]),
-            (eff, 'Effort [Nm]',     'Effort',    CB[6]),
-        ]
-        for ax, (data, ylabel, title, c) in zip(axs, conf):
-            avg = np.mean(data)
-            ax.plot(t, data, color=c, label=title)
-            ax.axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.3f}')
-            ax.set_ylabel(ylabel); ax.set_title(title); ax.legend()
-        axs[-1].set_xlabel('Time [s]')
-        fig.tight_layout()
-        save(fig, 'joints', 'joints', 'state', f'{joint}.png')
-
-
-# ---------------------------------------------------------------------------
-# Numeric derivative  (numeric_derivative.txt)
-# ---------------------------------------------------------------------------
-
-def plot_numeric_derivative(log_dir: Path, joint_names: list) -> None:
-    log_file = log_dir / 'numeric_derivative.txt'
-    if not log_file.exists():
-        warn_missing(log_file)
-        return
-
-    content = log_file.read_text().splitlines()
-    for joint in joint_names:
-        pattern = re.compile(
-            rf'(?P<time>\d+\.\d+)\s+\d+\.\d+\s+{re.escape(joint)}:\s+'
-            rf'pos:\s+(?P<pos>[-+]?\d*\.\d+)\s+numeric_vel:\s+(?P<numvel>[-+]?\d*\.\d+)'
-        )
-        times, positions, num_vels = [], [], []
-        for line in content:
-            m = pattern.search(line)
-            if m:
-                times.append(float(m.group('time')))
-                positions.append(float(m.group('pos')))
-                num_vels.append(float(m.group('numvel')))
-        if not times:
-            print(f'  [skip] no numeric derivative data for {joint}')
-            continue
-        t = np.array(times) - times[0]
-
-        fig, axs = plt.subplots(2, 1, sharex=True, figsize=(12, 7))
-        fig.suptitle(f'Numeric Derivative: {joint}', fontsize=13)
-        for ax, data, ylabel, title, c in zip(
-            axs,
-            [positions, num_vels],
-            ['Position [rad]', 'Numeric Velocity [rad/s]'],
-            ['Position', 'Numeric Derivative'],
-            [CB[5], CB[3]],
-        ):
-            avg = np.mean(data)
-            ax.plot(t, data, color=c, label=title)
-            ax.axhline(avg, linestyle='--', color=CB[0], alpha=0.6, label=f'avg={avg:.3f}')
-            ax.set_ylabel(ylabel); ax.set_title(title); ax.legend()
-        axs[-1].set_xlabel('Time [s]')
-        fig.tight_layout()
-        save(fig, 'joints', 'joints', 'numeric_derivative', f'{joint}.png')
-
-
-# ---------------------------------------------------------------------------
-# Tau commanded + joint state  (tau_commanded.txt + joint_state_log.txt)
-# ---------------------------------------------------------------------------
-
-def plot_tau_velocity(log_dir: Path, joint_names: list) -> None:
-    tau_file = log_dir / 'tau_commanded.txt'
-    state_file = log_dir / 'joint_state_log.txt'
-
-    if not tau_file.exists() and not state_file.exists():
-        print('  [skip] neither tau_commanded.txt nor joint_state_log.txt found')
-        return
-
-    # Reference t0 from joint state file
-    t0_state = None
-    if state_file.exists():
-        for line in state_file.read_text().splitlines():
-            m = re.match(r'\d+\.\d+\s+(\d+\.\d+)', line)
-            if m:
-                t0_state = float(m.group(1))
-                break
-
-    for joint in joint_names:
-        tau_d   = defaultdict(list)
-        state_d = defaultdict(list)
-
-        if tau_file.exists() and t0_state is not None:
-            cur_time = None
-            for line in tau_file.read_text().splitlines():
-                ts = re.match(r'^(\d+\.\d+)', line)
-                if ts:
-                    cur_time = float(ts.group(1))
-                m = re.search(
-                    rf'({re.escape(joint)}).*effort commanded:\s+([-\d\.eE]+)'
-                    rf'.*vel_target:\s+([-\d\.eE]+)\s+vel_feedback:\s+([-\d\.eE]+)',
-                    line,
-                )
-                if m and cur_time is not None:
-                    tau_d['t'].append(cur_time - t0_state)
-                    tau_d['tau_cmd'].append(float(m.group(2)))
-                    tau_d['target'].append(float(m.group(3)))
-                    tau_d['vel'].append(float(m.group(4)))
-
-        if state_file.exists() and t0_state is not None:
-            pattern = re.compile(
-                rf'\d+\.\d+\s+(\d+\.\d+)\s+{re.escape(joint)}:'
-                rf'.*vel:\s+([-\d\.eE]+)\s+effort:\s+([-\d\.eE]+)'
-            )
-            for line in state_file.read_text().splitlines():
-                m = pattern.search(line)
-                if m:
-                    state_d['t'].append(float(m.group(1)) - t0_state)
-                    state_d['vel'].append(float(m.group(2)))
-                    state_d['tau'].append(float(m.group(3)))
-
-        if not tau_d['t'] and not state_d['t']:
-            print(f'  [skip] no tau/vel data for {joint}')
-            continue
-
-        fig, axs = plt.subplots(2, 1, sharex=True, figsize=(13, 9))
-        fig.suptitle(f'Torque & Velocity Control: {joint}', fontsize=13)
-
-        if state_d['t']:
-            axs[0].plot(state_d['t'], state_d['vel'], color=CB[5], label='measured vel')
-        if tau_d['t']:
-            axs[0].plot(tau_d['t'], tau_d['vel'],    color=CB[2], label='vel feedback')
-            axs[0].plot(tau_d['t'], tau_d['target'], '--', color=CB[1], label='vel target')
-        axs[0].set_ylabel('Velocity [rad/s]'); axs[0].legend()
-
-        if tau_d['t']:
-            axs[1].plot(tau_d['t'], tau_d['tau_cmd'], color=CB[6], label='tau commanded')
-        if state_d['t']:
-            axs[1].plot(state_d['t'], state_d['tau'], color=CB[3], label='tau measured')
-        axs[1].set_xlabel('Time [s]'); axs[1].set_ylabel('Torque [Nm]'); axs[1].legend()
-        fig.tight_layout()
-        save(fig, 'joints', 'joints', 'tau_velocity', f'{joint}.png')
-
-
-# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -874,42 +898,34 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             'Generate TITA controller plots.\n'
-            'Default: save every group to images/.\n'
-            'Pass --show-<group> to open that group interactively instead '
-            '(enables zooming/panning); other groups still save normally.\n'
-            'Multiple --show-* flags are allowed.'
+            'Default: filter, wbc, timings, feedback groups.\n'
+            'Pass --show-<group> to open interactively; --only to restrict groups.\n'
+            'Groups: filter wbc timings feedback encoder odom plan'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('--log-dir', type=Path, default=ROBOT_LOGS,
-                        help=f'Directory with robot log files  [default: {ROBOT_LOGS}]')
-    parser.add_argument('--tmp-dir', type=Path, default=ROBOT_LOGS,
-                        help=f'Temporary data directory  [default: {ROBOT_LOGS}]')
-    parser.add_argument('--joints', nargs='+',
-                        default=['joint_left_leg_4', 'joint_right_leg_4'],
+                        help=f'robot_logs/ directory  [default: {ROBOT_LOGS}]')
+    parser.add_argument('--joints', nargs='+', default=JOINT_NAMES,
                         help='Joint names for per-joint plots')
-    parser.add_argument('--mpc-t', type=float, default=None,
-                        metavar='TIMESTEP_MS',
-                        help='MPC snapshot timestep (ms) — enables mpc group')
-    parser.add_argument('--only', nargs='+', default=None,
-                        metavar='GROUP',
-                        help='Run only the listed groups: '
-                             'encoder estimation imu odom plan timings wbc mpc joints')
+    parser.add_argument('--only', nargs='+', default=None, metavar='GROUP',
+                        help='Run only the listed groups')
 
-    show_group = parser.add_argument_group(
-        'interactive display (show instead of save)'
-    )
+    show_group = parser.add_argument_group('interactive display')
     for g in sorted(_ALL_GROUPS):
         show_group.add_argument(f'--show-{g}', action='store_true',
                                 help=f'Show {g} plots interactively')
 
     args = parser.parse_args()
 
-    # If --show-X flags are given without --only, restrict execution to those groups only.
-    only = set(args.only) if args.only else (_SHOW if _SHOW else None)
+    log_dir = args.log_dir
+    print(f'Log directory : {log_dir}')
+    print(f'Output        : {OUT_DIR}')
+
+    only = set(args.only) if args.only else (_SHOW if _SHOW else _DEFAULT_GROUPS)
 
     def run(group: str, fn, *a, **kw) -> None:
-        if only and group not in only:
+        if group not in only:
             return
         print(f'\n[{group}]')
         try:
@@ -917,30 +933,22 @@ def main() -> None:
         except Exception as exc:
             print(f'  ERROR in {fn.__name__}: {exc}')
 
-    run('encoder',    plot_encoder_wheels,      args.log_dir)
-    run('estimation', plot_estimation,          args.log_dir)
-    run('imu',        plot_imu,                 args.log_dir)
-    run('odom',       plot_odom,                args.log_dir)
-    run('odom',       plot_robot_odometry,      args.log_dir)
-    run('plan',       plot_plan,                args.tmp_dir)
-    run('timings',    plot_timings,             args.tmp_dir)
-    run('wbc',        plot_wbc_tracking,        args.tmp_dir)
-    run('joints',     plot_joint_tau,           args.tmp_dir)
-    run('joints',     plot_joint_state,         args.log_dir, args.joints)
-    run('joints',     plot_numeric_derivative,  args.log_dir, args.joints)
-    run('joints',     plot_tau_velocity,        args.log_dir, args.joints)
-    if args.mpc_t is not None:
-        run('mpc',    plot_mpc_snapshot,        args.tmp_dir, args.mpc_t)
+    run('filter',   plot_filter,          log_dir)
+    run('wbc',      plot_wbc,             log_dir, args.joints)
+    run('timings',  plot_timings,         log_dir)
+    run('feedback', plot_feedback_imu,    log_dir)
+    run('feedback', plot_feedback_joints, log_dir, args.joints)
+    run('encoder',  plot_encoder_wheels,  log_dir)
+    run('odom',     plot_odom,            log_dir)
+    run('odom',     plot_robot_odometry,  log_dir)
+    run('plan',     plot_plan,            log_dir)
 
     if _SHOW:
         shown = ', '.join(sorted(_SHOW))
         print(f'\nOpening interactive windows for: {shown}')
-        print('Close all windows to exit.')
         plt.show()
-
-    saved = _ALL_GROUPS - _SHOW
-    if saved and not only:
-        print(f'\nImages saved under  {OUT_DIR.relative_to(OUT_DIR.parent.parent)}/')
+    else:
+        print(f'\nImages saved under  {OUT_DIR.relative_to(OUT_DIR.parent)}/')
 
 
 if __name__ == '__main__':

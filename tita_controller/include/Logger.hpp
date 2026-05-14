@@ -36,13 +36,20 @@ struct GenericTask {
     double ax_des = 0.0;
     double ay_des = 0.0;
     double az_des = 0.0;
-}
+};
 
-struct JointData {
+struct WBCJointData {
     std::array<double, 8> pos    = {};
     std::array<double, 8> vel    = {};
     std::array<double, 8> effort = {};
-}
+};
+
+struct WBCSolution {
+    WBCJointData joints;
+
+    // aggiungi contct forces, ma non si sa il numero esatto, dipende dai contatti
+    
+};
 
 struct WBCEntry {
     double time_ms = 0.0;
@@ -50,14 +57,8 @@ struct WBCEntry {
     GenericTask com;
     GenericTask wheel_l;
     GenericTask wheel_r;
+    GenericTask torso;      // px=roll, py=pitch, pz=yaw  (actual and desired)
     WBCSolution solution;
-};
-
-struct WBCSolution {
-    JointData joints;
-
-    // aggiungi contct forces, ma non si sa il numero esatto, dipende dai contatti
-    
 };
 
 struct MPCEntry {
@@ -68,9 +69,10 @@ struct MPCEntry {
 };
 
 struct TimingEntry {
-    long time_mpc_us = 0;
-    long time_wbc_us = 0;
-    long total_time_us = 0;
+    long time_mpc_us    = 0;
+    long time_wbc_us    = 0;
+    long time_filter_us = 0;
+    long total_time_us  = 0;
 };
 
 struct ImuEntry {
@@ -83,13 +85,13 @@ struct ImuEntry {
 struct JointStateEntry {
     double time_stamp_s = 0.0;   // from message header
     double time_now_s   = 0.0;   // from ros clock
-    JointData joints;
+    WBCJointData joints;
 };
 
 struct TauCommandedEntry {
     double time_s = 0.0;
     std::array<double, 8> tau = {};
-}
+};
 
 class Logger {
 public:
@@ -169,6 +171,20 @@ public:
         tau_entries_.emplace_back(std::move(entry));
     }
 
+    void save_feedback_logs(const std::string& directory = "/tmp") const {
+        namespace fs = std::filesystem;
+        fs::create_directories(directory);
+
+        save_imu_logs(directory + "/imu_log.txt");
+        std::cout << "IMU logs saved" << std::endl;
+
+        save_joint_state_logs(directory + "/joint_state_log.txt");
+        std::cout << "Joint state logs saved" << std::endl;
+
+        save_tau_commanded_logs(directory + "/tau_commanded_log.txt");
+        std::cout << "Tau commanded logs saved" << std::endl;
+    }
+
     void save_log_data(const std::string& directory = "/tmp") const {
         namespace fs = std::filesystem;
         fs::create_directories(directory);
@@ -198,11 +214,12 @@ public:
         save_joint_state_logs(directory + "/joint_state_log.txt");
         auto end_js_log = std::chrono::system_clock::now();
         auto js_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_js_log - end_imu_log).count();
+        std::cout << "Joint state logs saved in " << js_log_time << " ms" << std::endl;
 
         save_tau_commanded_logs(directory + "/tau_commanded_log.txt");
         auto end_tau_log = std::chrono::system_clock::now();
         auto tau_log_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_tau_log - end_js_log).count();
-        std::cout << "Joint state logs saved in " << tau_log_time << " ms" << std::endl;
+        std::cout << "Tau commanded logs saved in " << tau_log_time << " ms" << std::endl;
     }
 
     std::size_t wbc_size()         const { return wbc_entries_.size(); }
@@ -236,23 +253,53 @@ private:
             throw std::runtime_error("Failed to open file: " + filename);
         }
 
-        out << "time_ms,"
-            << "com_x,com_y,com_z,"
-            << "com_x_des,com_y_des,com_z_des,"
-            << "wheel_l_x,wheel_l_y,wheel_l_z,"
-            << "wheel_l_x_des,wheel_l_y_des,wheel_l_z_des,"
-            << "wheel_r_x,wheel_r_y,wheel_r_z,"
-            << "wheel_r_x_des,wheel_r_y_des,wheel_r_z_des\n";
+        auto task_header = [&](const std::string& p) {
+            out << p << "_x,"  << p << "_y,"  << p << "_z,"
+                << p << "_x_des," << p << "_y_des," << p << "_z_des,"
+                << p << "_vx," << p << "_vy," << p << "_vz,"
+                << p << "_vx_des," << p << "_vy_des," << p << "_vz_des,"
+                << p << "_ax_des," << p << "_ay_des," << p << "_az_des";
+        };
+
+        out << "time_ms,";
+        task_header("com");     out << ",";
+        task_header("wheel_l"); out << ",";
+        task_header("wheel_r"); out << ",";
+        task_header("torso");
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",sol_" << n << "_pos";
+        }
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",sol_" << n << "_vel";
+        }
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",sol_" << n << "_tau";
+        }
+        out << "\n";
+
+        out << std::fixed << std::setprecision(9);
+
+        auto write_task = [&](const GenericTask& t) {
+            out << t.px     << "," << t.py     << "," << t.pz     << ","
+                << t.px_des << "," << t.py_des << "," << t.pz_des << ","
+                << t.vx     << "," << t.vy     << "," << t.vz     << ","
+                << t.vx_des << "," << t.vy_des << "," << t.vz_des << ","
+                << t.ax_des << "," << t.ay_des << "," << t.az_des;
+        };
 
         for (const auto& e : wbc_entries_) {
-            out << e.time_ms << ","
-                << e.com_x << "," << e.com_y << "," << e.com_z << ","
-                << e.com_x_des << "," << e.com_y_des << "," << e.com_z_des << ","
-                << e.wheel_l_x << "," << e.wheel_l_y << "," << e.wheel_l_z << ","
-                << e.wheel_l_x_des << "," << e.wheel_l_y_des << "," << e.wheel_l_z_des << ","
-                << e.wheel_r_x << "," << e.wheel_r_y << "," << e.wheel_r_z << ","
-                << e.wheel_r_x_des << "," << e.wheel_r_y_des << "," << e.wheel_r_z_des
-                << "\n";
+            out << e.time_ms << ",";
+            write_task(e.com);     out << ",";
+            write_task(e.wheel_l); out << ",";
+            write_task(e.wheel_r); out << ",";
+            write_task(e.torso);
+            for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.pos[i];
+            for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.vel[i];
+            for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.effort[i];
+            out << "\n";
         }
     }
 
@@ -279,13 +326,13 @@ private:
             throw std::runtime_error("Failed to open file: " + filename);
         }
 
-        out << "time_mpc_us,time_wbc_us,total_time_us\n";
+        out << "time_mpc_us,time_wbc_us,time_filter_us,total_time_us\n";
 
         for (const auto& e : timing_entries_) {
-            out << e.time_mpc_us << ","
-                << e.time_wbc_us << ","
-                << e.total_time_us
-                << "\n";
+            out << e.time_mpc_us    << ","
+                << e.time_wbc_us    << ","
+                << e.time_filter_us << ","
+                << e.total_time_us  << "\n";
         }
     }
 
