@@ -125,6 +125,12 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init logger
     logger_.reserve(20000);
+    {
+        std::vector<std::string> jnt_names;
+        for (pinocchio::JointIndex j = 2; j < static_cast<pinocchio::JointIndex>(robot_model_->njoints); ++j)
+            jnt_names.push_back(robot_model_->names[j]);
+        logger_.set_joint_names(jnt_names);
+    }
 
     return true;
     }

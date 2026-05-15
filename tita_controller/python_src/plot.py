@@ -394,20 +394,38 @@ def plot_wbc_solution(
     tau_df: pd.DataFrame | None,
     joint_names: list,
 ) -> None:
-    t_wbc = _wbc_time(wbc_df)
-
     if js_df is not None and js_df.empty:
         js_df = None
     if tau_df is not None and tau_df.empty:
         tau_df = None
 
+    # --- Align all absolute-time sources to a common t0 ---
+    # joint_state: time_stamp_s is hardware ROS time (absolute)
+    # tau_commanded: time_s is ROS clock (absolute)
+    # Both are on the same clock → use their min as common origin.
+    t0_abs = None
+    if js_df is not None:
+        t0_abs = float(js_df['time_stamp_s'].iloc[0])
+    if tau_df is not None and 'time_s' in tau_df.columns:
+        tau_t0 = float(tau_df['time_s'].iloc[0])
+        t0_abs = tau_t0 if t0_abs is None else min(t0_abs, tau_t0)
+
     t_js = t_tau = None
     if js_df is not None:
-        t_js = js_df['time_stamp_s'].values - js_df['time_stamp_s'].iloc[0]
+        t_js  = js_df['time_stamp_s'].values - t0_abs
     if tau_df is not None and 'time_s' in tau_df.columns:
-        t_tau = tau_df['time_s'].values - tau_df['time_s'].iloc[0]
+        t_tau = tau_df['time_s'].values - t0_abs
     elif tau_df is not None:
         t_tau = np.arange(len(tau_df)) * 0.002
+
+    # WBC time_ms is relative to WBC-mode start (t=0 at first update() call).
+    # tau_commanded also starts near WBC activation → use its first timestamp
+    # as the WBC origin in absolute time so all three axes align.
+    if tau_df is not None and 'time_s' in tau_df.columns and t0_abs is not None:
+        wbc_offset = float(tau_df['time_s'].iloc[0]) - t0_abs
+    else:
+        wbc_offset = 0.0
+    t_wbc = wbc_df['time_ms'].values / 1000.0 + wbc_offset
 
     for joint in joint_names:
         sol_pos_col = f'sol_{joint}_pos'
@@ -417,48 +435,52 @@ def plot_wbc_solution(
         has_solution = sol_pos_col in wbc_df.columns
         has_js       = js_df is not None and f'{joint}_pos' in js_df.columns
         has_tau      = tau_df is not None and f'{joint}_tau' in tau_df.columns
+        has_effort   = has_js and f'{joint}_effort' in js_df.columns
 
         if not has_solution and not has_js and not has_tau:
             print(f'  [skip] no solution/feedback data for {joint}')
             continue
 
-        # --- comparison/{joint}.png ---
-        fig, axes = plt.subplots(3, 1, figsize=(13, 11), sharex=False)
-        fig.suptitle(f'WBC Solution vs Feedback — {joint}', fontsize=13)
+        # --- comparison/{joint}_kinematics.png  (WBC sol vs actual pos & vel) ---
+        fig, (ax_p, ax_v) = plt.subplots(2, 1, figsize=(13, 9), sharex=True)
+        fig.suptitle(f'WBC Solution vs Actual — {joint}', fontsize=13)
 
-        ax = axes[0]
         if has_solution:
-            ax.plot(t_wbc, wbc_df[sol_pos_col].values, '--', color=CB[6],
-                    label='WBC desired', linewidth=1.5)
+            print('ciao')
+            ax_p.plot(t_wbc, wbc_df[sol_pos_col].values, '--', color=CB[6],
+                      label='WBC desired', lw=1.5)
         if has_js:
-            ax.plot(t_js, js_df[f'{joint}_pos'].values, '-', color=CB[5],
-                    label='actual', linewidth=1.2)
-        ax.set_ylabel('Position [rad]'); ax.set_title('Joint Position'); ax.legend()
+            ax_p.plot(t_js, js_df[f'{joint}_pos'].values, '-', color=CB[5],
+                      label='actual', lw=1.2)
+        ax_p.set_ylabel('Position [rad]'); ax_p.set_title('Joint Position'); ax_p.legend()
 
-        ax = axes[1]
         if has_solution:
-            ax.plot(t_wbc, wbc_df[sol_vel_col].values, '--', color=CB[6],
-                    label='WBC desired', linewidth=1.5)
+            ax_v.plot(t_wbc, wbc_df[sol_vel_col].values, '--', color=CB[6],
+                      label='WBC desired', lw=1.5)
         if has_js:
-            ax.plot(t_js, js_df[f'{joint}_vel'].values, '-', color=CB[5],
-                    label='actual', linewidth=1.2)
-        ax.set_ylabel('Velocity [rad/s]'); ax.set_title('Joint Velocity'); ax.legend()
-
-        ax = axes[2]
-        if has_solution:
-            ax.plot(t_wbc, wbc_df[sol_tau_col].values, '-', color=CB[3],
-                    label='WBC tau', linewidth=1.5)
-        if has_tau:
-            ax.plot(t_tau, tau_df[f'{joint}_tau'].values, '--', color=CB[1],
-                    label='commanded (PD+FF)', linewidth=1.2)
-        if has_js and f'{joint}_effort' in js_df.columns:
-            ax.plot(t_js, js_df[f'{joint}_effort'].values, ':', color=CB[7],
-                    label='measured effort', linewidth=1.0, alpha=0.8)
-        ax.set_xlabel('Time [s]'); ax.set_ylabel('Torque [Nm]')
-        ax.set_title('Joint Torque'); ax.legend()
+            ax_v.plot(t_js, js_df[f'{joint}_vel'].values, '-', color=CB[5],
+                      label='actual', lw=1.2)
+        ax_v.set_ylabel('Velocity [rad/s]'); ax_v.set_title('Joint Velocity'); ax_v.legend()
+        ax_v.set_xlabel('Time [s]')
 
         fig.tight_layout()
-        save(fig, 'wbc', 'wbc', 'wbc_solution', 'comparison', f'{joint}.png')
+        save(fig, 'wbc', 'wbc', 'wbc_solution', 'comparison', f'{joint}_kinematics.png')
+
+        # --- comparison/{joint}_torque.png  (WBC tau vs commanded vs measured) ---
+        fig, ax = plt.subplots(figsize=(13, 5))
+        fig.suptitle(f'Torque — {joint}', fontsize=13)
+        if has_solution:
+            ax.plot(t_wbc, wbc_df[sol_tau_col].values, '-', color=CB[3],
+                    label='WBC tau', lw=1.5)
+        if has_tau:
+            ax.plot(t_tau, tau_df[f'{joint}_tau'].values, '--', color=CB[1],
+                    label='commanded (PD+FF)', lw=1.2)
+        if has_effort:
+            ax.plot(t_js, js_df[f'{joint}_effort'].values, ':', color=CB[7],
+                    label='measured effort', lw=1.0, alpha=0.8)
+        ax.set_xlabel('Time [s]'); ax.set_ylabel('Torque [Nm]'); ax.legend()
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'wbc_solution', 'comparison', f'{joint}_torque.png')
 
         # --- error/{joint}_error.png ---
         if has_solution and has_js:
@@ -469,16 +491,13 @@ def plot_wbc_solution(
 
             fig, (ax_p, ax_v) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
             fig.suptitle(f'WBC Solution Error — {joint}', fontsize=13)
-
             ax_p.plot(t_wbc, pos_err, color=CB[6])
             ax_p.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
             ax_p.set_ylabel('err [rad]'); ax_p.set_title('Position error (WBC desired − actual)')
-
             ax_v.plot(t_wbc, vel_err, color=CB[3])
             ax_v.axhline(0, linestyle='--', color=CB[0], alpha=0.4)
             ax_v.set_ylabel('err [rad/s]'); ax_v.set_title('Velocity error (WBC desired − actual)')
             ax_v.set_xlabel('Time [s]')
-
             fig.tight_layout()
             save(fig, 'wbc', 'wbc', 'wbc_solution', 'error', f'{joint}_error.png')
 
