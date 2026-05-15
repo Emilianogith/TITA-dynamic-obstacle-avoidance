@@ -6,6 +6,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
   params.Kp_motion = 250.0;                    // 120.0
   params.Kd_motion = 95.0;                     // 65.0
+
+  params.Kp_torso = 250.0;                    // 120.0
+  params.Kd_torso = 95.0; 
+
   params.Kp_regulation = 0.0;            
   params.Kd_regulation = 1;      
 
@@ -36,6 +40,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
   params.Kp_motion = 2500.0;
   params.Kd_motion = 300.0; 
 
+  params.Kp_torso = 2500.0;                    // 120.0
+  params.Kd_torso = 300.0; 
+
   params.Kp_wheel = 1600.0;   
   params.Kd_wheel = 200.0;          
 
@@ -49,6 +56,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
 
 WholeBodyControllerParams WholeBodyControllerParams::getJumpParams() {
   auto jump_params = WholeBodyControllerParams::getDefaultParams();
+  jump_params.Kp_motion = 1000.0;
+  jump_params.Kd_motion = 200.0; 
+
   jump_params.Kp_motion = 1000.0;
   jump_params.Kd_motion = 200.0; 
 
@@ -229,7 +239,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
   Eigen::VectorXd a_lwheel_total = desired.lwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_lwheel.head(select_wheel_pose) + params_.Kd_wheel * err_lwheel_vel.head(select_wheel_pose);
   Eigen::VectorXd a_rwheel_total = desired.rwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_rwheel.head(select_wheel_pose) + params_.Kd_wheel * err_rwheel_vel.head(select_wheel_pose);
-  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_motion * err_base_orientation + params_.Kd_motion * err_base_orientation_vel;
+  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_torso * err_base_orientation + params_.Kd_torso * err_base_orientation_vel;
 
 
   // Build cost function

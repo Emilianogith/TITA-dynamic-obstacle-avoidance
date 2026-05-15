@@ -158,7 +158,7 @@ public:
 
 
         // Logging
-        std::filesystem::create_directories(log_path_);
+        std::filesystem::create_directories(log_path_);package_path
 
         // ---------- KF log ----------
         csv.open(log_path_ + "/kf_test.csv");
@@ -633,11 +633,11 @@ private:
 
         std::array<double, 8> q_des;
         q_des[0] = 0.0;                 // joint_left_leg_1
-        q_des[1] = 0.8;                 // joint_left_leg_2
+        q_des[1] = 1.0;                 // joint_left_leg_2
         q_des[2] = -2.0;                // joint_left_leg_3
         q_des[3] = 0.1;                 // joint_left_leg_4
         q_des[4] = 0.0;                 // joint_right_leg_1
-        q_des[5] = 0.8;                 // joint_right_leg_2
+        q_des[5] = 1.0;                 // joint_right_leg_2
         q_des[6] = -2.0;                // joint_right_leg_3
         q_des[7] = 0.1;                 // joint_right_leg_4
 
