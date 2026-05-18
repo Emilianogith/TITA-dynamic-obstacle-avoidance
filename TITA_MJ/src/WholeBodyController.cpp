@@ -5,15 +5,21 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
   params.Kp_motion = 250.0;                    // 120.0
-  params.Kd_motion = 95.0;                     // 65.0
+  params.Kd_motion = 50.0;                     // 65.0
+
+  params.Kp_torso = 300.0;                     // 120.0
+  params.Kd_torso = 80.0;                      // 65.0
+  params.Ki_torso = 100.0;                     // 65.0
+
+
   params.Kp_regulation = 0.0;            
-  params.Kd_regulation = 1;      
+  params.Kd_regulation = 0.0;      
 
   params.Kp_wheel = 250.0;                     // 95.0  
-  params.Kd_wheel = 75.0;                      // 75.0         
+  params.Kd_wheel = 50.0;                      // 75.0         
 
   params.weight_q_ddot = 1e-6;                 // 1e-6    
-  params.weight_com = 0.5;                     // 0.05           
+  params.weight_com = 0.05;                     // 0.05           
   params.weight_lwheel = 0.05;                 // 0.05              
   params.weight_rwheel = 0.05;                 // 0.05              
   params.weight_base = 0.01;                   // 0.05        
@@ -26,6 +32,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
                   
   params.mu = 0.9;                              // 0.9
 
+  params.integral_clamp = 0.9;
+
   params.weight_tau_reg = 1e-8;   // prova per gambe trascinate
 
   return params;
@@ -35,6 +43,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
   auto params = WholeBodyControllerParams::getDefaultParams();
   params.Kp_motion = 2500.0;
   params.Kd_motion = 300.0; 
+
+  params.Kp_torso = 2500.0;                     // 120.0
+  params.Kd_torso = 300.0;                      // 65.0
+  params.Ki_torso = 100.0;                     // 65.0
 
   params.Kp_wheel = 1600.0;   
   params.Kd_wheel = 200.0;          
@@ -51,6 +63,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getJumpParams() {
   auto jump_params = WholeBodyControllerParams::getDefaultParams();
   jump_params.Kp_motion = 1000.0;
   jump_params.Kd_motion = 200.0; 
+
+  jump_params.Kp_torso = 1000.0;
+  jump_params.Kd_torso = 200.0; 
+  jump_params.Ki_torso = 100.0; 
 
   jump_params.Kp_wheel = 1800.0;   
   jump_params.Kd_wheel = 100.0;      
@@ -228,7 +244,15 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
   Eigen::VectorXd a_lwheel_total = desired.lwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_lwheel.head(select_wheel_pose) + params_.Kd_wheel * err_lwheel_vel.head(select_wheel_pose);
   Eigen::VectorXd a_rwheel_total = desired.rwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_rwheel.head(select_wheel_pose) + params_.Kd_wheel * err_rwheel_vel.head(select_wheel_pose);
-  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_motion * err_base_orientation + params_.Kd_motion * err_base_orientation_vel;
+
+
+  // added integral action
+  // Integrate with anti-windup clamp
+  base_orient_error_integral_ += err_base_orientation * sample_time_;
+  base_orient_error_integral_ = base_orient_error_integral_.cwiseMax(-params_.integral_clamp)
+                                                          .cwiseMin( params_.integral_clamp);
+  
+  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_torso * err_base_orientation + params_.Kd_torso * err_base_orientation_vel + params_.Ki_torso * base_orient_error_integral_;
 
 
   // Build cost function

@@ -85,11 +85,10 @@ void print_contacts(const mjModel* m, const mjData* d) {
 }
 
 
-
 void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep_counter){
-  double point[3]{0.0, 0.0, 0.0};
+  double point[3]{0.0, 0.1, 0.0};
 
-  double force[3] {110.0, -50.0, 110.0}; // {110.0, -50.0, 110.0}; {-200.0, -160.0, -300.0};
+  double force[3] {0.0, 50.0, 0.0}; // {110.0, -50.0, 110.0}; {-200.0, -160.0, -300.0};
   double torque[3]{0.0, 0.0, 0.0};
 
   int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "base_link");
@@ -103,7 +102,41 @@ void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep
     force[2] = -force[2];
     mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
   }
+
+
+  point[0] = 0.0;
+  point[1] = -0.1;
+  point[2] = 0.0;
+
+  if (timestep_counter == 2000) {
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+  if (timestep_counter == 2100) {
+    force[0] = -force[0];
+    force[1] = -force[1];
+    force[2] = -force[2];
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+
+
+
+  point[0] = 0.0;
+  point[1] = 0.1;
+  point[2] = 0.0;
+
+  if (timestep_counter == 3000) {
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+  if (timestep_counter == 3100) {
+    force[0] = -force[0];
+    force[1] = -force[1];
+    force[2] = -force[2];
+    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  }
+
+
 }
+
 
 
 labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
@@ -249,7 +282,7 @@ int main() {
     walking_manager.update(robot_state, joint_torque, joint_acceleration);
 
     // apply a disturbance
-    // apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
+    apply_disturbance(mj_model_ptr, mj_data_ptr, timestep_counter);
     ++timestep_counter;
 
     if (first_frame == true) {

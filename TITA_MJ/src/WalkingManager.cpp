@@ -75,7 +75,9 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 
     // Init WBC:
-    auto params = WholeBodyControllerParams::getRobustParams();
+    // auto params = WholeBodyControllerParams::getRobustParams();
+    auto params = WholeBodyControllerParams::getDefaultParams();
+
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
@@ -183,17 +185,17 @@ void WalkingManager::update(
 
 
     // 3-obstacle
-    if (std::fabs(t_msec_ - 1230.0) < 0.5){
-        walkingPlanner_.jumpRoutine(t_msec_, 0.15);
-    }
+    // if (std::fabs(t_msec_ - 1230.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.15);
+    // }
 
-    if (std::fabs(t_msec_ - 2320.0) < 0.5){
-        walkingPlanner_.jumpRoutine(t_msec_, 0.25);
-    }
+    // if (std::fabs(t_msec_ - 2320.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.25);
+    // }
 
-    if (std::fabs(t_msec_ - 3800.0) < 0.5){
-        walkingPlanner_.jumpRoutine(t_msec_, 0.30);
-    }
+    // if (std::fabs(t_msec_ - 3800.0) < 0.5){
+    //     walkingPlanner_.jumpRoutine(t_msec_, 0.30);
+    // }
     // --------------------------------------------------------
 
     
@@ -229,13 +231,48 @@ void WalkingManager::update(
     des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
 
 
-    Eigen::Matrix3d R_theta = Eigen::Matrix3d::Zero();
-    R_theta << cos(sol.theta), -sin(sol.theta), 0,
+
+
+
+    Eigen::Matrix3d R_yaw = Eigen::Matrix3d::Zero();
+    R_yaw << cos(sol.theta), -sin(sol.theta), 0,
             sin(sol.theta), cos(sol.theta), 0,
             0,0,1;
-    des_configuration_.base_link.pos = R_theta;
+    // des_configuration_.base_link.pos = R_yaw;
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
+
+    double roll  = 0.0 * M_PI / 180.0;
+    double pitch = 0.0 * M_PI / 180.0;
+
+    // if (cycle_counter < 2500){
+    //     pitch = 0.0 * M_PI / 180.0;
+    // } else if (cycle_counter < 6000){
+    //     pitch = 15.0 * M_PI / 180.0;
+    // }
+
+    // Roll around X
+    Eigen::Matrix3d R_roll;
+    R_roll << 1.0, 0.0,        0.0,
+            0.0, cos(roll), -sin(roll),
+            0.0, sin(roll),  cos(roll);
+
+    // Pitch around Y
+    Eigen::Matrix3d R_pitch;
+    R_pitch <<  cos(pitch), 0.0, sin(pitch),
+                0.0,        1.0, 0.0,
+            -sin(pitch), 0.0, cos(pitch);
+
+    // Combined rotation
+    // first roll, then pitch
+    Eigen::Matrix3d R_des = R_yaw * R_pitch * R_roll;
+    des_configuration_.base_link.pos = R_des;
+
+
+
+
+
+
 
     // get jumping phase from planned trajectory
         // jump_state = 0 : contact phase

@@ -24,6 +24,11 @@ namespace labrob {
 struct WholeBodyControllerParams {
   double Kp_motion;
   double Kd_motion;
+
+  double Kp_torso;
+  double Kd_torso;
+  double Ki_torso;
+
   double Kp_regulation;
   double Kd_regulation;
 
@@ -45,6 +50,9 @@ struct WholeBodyControllerParams {
   double mu;
 
   double weight_tau_reg;
+
+  double integral_clamp;
+
 
   static WholeBodyControllerParams getDefaultParams();
   static WholeBodyControllerParams getRobustParams();
@@ -97,6 +105,8 @@ class WholeBodyController {
   int n_wbc_variables_;
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
+
+  Eigen::Vector3d base_orient_error_integral_ = Eigen::Vector3d::Zero();
 
   std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 
