@@ -377,7 +377,6 @@ void WalkingManager::update(
 
     // log WBC data
     labrob::WBCEntry wbc_entry;
-    labrob::WBCSolution wbc_solution;
     wbc_entry.time_ms = t_msec_;
 
     wbc_entry.com.px = p_CoM(0); 
@@ -477,6 +476,19 @@ void WalkingManager::update(
             wbc_entry.solution.joints.vel[i]    = qdot(v_off + i)
                 + joint_acceleration[name] * dt;
             wbc_entry.solution.joints.effort[i] = joint_torque[name];
+        }
+    }
+
+    // WBC feedback data
+    {
+        const int na    = robot_model_->njoints - 2;   // 8 actuated joints
+        const int q_off = robot_model_->nq - na;       // free-flyer offset in q  (= 7)
+        const int v_off = robot_model_->nv - na;       // free-flyer offset in qdot (= 6)
+        for (int i = 0; i < na; ++i) {
+            const std::string& name = robot_model_->names[i + 2];
+            wbc_entry.feedback.pos[i]    = q(q_off + i);
+            wbc_entry.feedback.vel[i]    = qdot(v_off + i);
+            wbc_entry.feedback.effort[i] = 0.0;
         }
     }
 

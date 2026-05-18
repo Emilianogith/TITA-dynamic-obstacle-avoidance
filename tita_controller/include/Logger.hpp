@@ -57,8 +57,9 @@ struct WBCEntry {
     GenericTask com;
     GenericTask wheel_l;
     GenericTask wheel_r;
-    GenericTask torso;      // px=roll, py=pitch, pz=yaw  (actual and desired)
+    GenericTask torso;
     WBCSolution solution;
+    WBCJointData feedback;
 };
 
 struct MPCEntry {
@@ -278,6 +279,18 @@ private:
             const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
             out << ",sol_" << n << "_tau";
         }
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",fb_" << n << "_pos";
+        }
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",fb_" << n << "_vel";
+        }
+        for (int i = 0; i < 8; ++i) {
+            const std::string n = (i < static_cast<int>(joint_names_.size())) ? joint_names_[i] : ("j" + std::to_string(i));
+            out << ",fb_" << n << "_effort";
+        }
         out << "\n";
 
         out << std::fixed << std::setprecision(9);
@@ -299,6 +312,9 @@ private:
             for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.pos[i];
             for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.vel[i];
             for (int i = 0; i < 8; ++i) out << "," << e.solution.joints.effort[i];
+            for (int i = 0; i < 8; ++i) out << "," << e.feedback.pos[i];
+            for (int i = 0; i < 8; ++i) out << "," << e.feedback.vel[i];
+            for (int i = 0; i < 8; ++i) out << "," << e.feedback.effort[i];
             out << "\n";
         }
     }
