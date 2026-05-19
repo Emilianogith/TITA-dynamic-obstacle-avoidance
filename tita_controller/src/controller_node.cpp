@@ -775,16 +775,14 @@ private:
         }
         node_logger_.log_tau_commanded_data(std::move(tau_entry));
 
-        // log also wbc solution here
-        labrob::WBCSolutionEntry wbc_sol_entry;
-        wbc_sol_entry.time_s = time_sec;
-        for (int idx = 0; idx < na;  ++idx) {
-            wbc_sol_entry.joints.qdd[idx];
-        }
-
-
-        // ------------ Publish effort commad ------------
-        effort_cmd_pub_->publish(effort_msg);
+        // // log also wbc solution here
+        // labrob::WBCSolutionEntry wbc_sol_entry;
+        // wbc_sol_entry.time_s = time_sec;
+        // for (int idx = 0; idx < na;  ++idx) {
+        //     wbc_sol_entry.joints.qdd[idx];
+        // }
+        // // ------------ Publish effort commad ------------
+        // effort_cmd_pub_->publish(effort_msg);
     }
 
     enum ControlMode {
