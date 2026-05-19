@@ -68,11 +68,11 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Init WBC:
     auto params = WholeBodyControllerParams::getDefaultParams();
 
-    // // params.Kp_motion = 250.0;                    // 120.0
-    // // params.Kd_motion = 95.0;                     // 65.0
+    // params.Kp_motion = 10.0;                    // 120.0
+    // params.Kd_motion = 1.0;                     // 65.0
 
-    // params.Kp_torso = 360.0;                    // 120.0
-    // params.Kd_torso = 98.0;                     // 65.0
+    // params.Kp_torso = 70.0;                    // 120.0
+    // params.Kd_torso = 1.0;                     // 65.0
 
 
     // // params.Kp_regulation = 0.0;            
@@ -82,10 +82,10 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // // params.Kd_wheel = 75.0;                      // 75.0         
 
     // // params.weight_q_ddot = 1e-6;                 // 1e-6    
-    // params.weight_com = 0.3;                     // 0.05           
+    // params.weight_com = 0.1;                     // 0.05           
     // params.weight_lwheel = 0.05;                 // 0.05              
     // params.weight_rwheel = 0.05;                 // 0.05              
-    // params.weight_base = 0.7;                   // 0.05        
+    // params.weight_base = 0.1;                   // 0.05        
     // // params.weight_angular_momentum = 0.0;    // 0.00001
     // // params.weight_regulation = 0.0; 
 

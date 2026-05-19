@@ -158,7 +158,7 @@ public:
 
 
         // Logging
-        std::filesystem::create_directories(log_path_);package_path
+        std::filesystem::create_directories(log_path_);
 
         // ---------- KF log ----------
         csv.open(log_path_ + "/kf_test.csv");
