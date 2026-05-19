@@ -519,6 +519,122 @@ def plot_wbc_solution(
         save(fig, 'wbc', 'wbc', 'wbc_solution', 'all_torques.png')
 
 
+def plot_wbc_tau_vs_effort(
+    js_df: pd.DataFrame,
+    tau_df: pd.DataFrame,
+    joint_names: list,
+) -> None:
+    try:
+        from scipy.signal import correlate
+    except ImportError:
+        print('  [skip] tau_vs_effort: scipy not available')
+        return
+
+    if 'time_now_s' not in js_df.columns or 'time_s' not in tau_df.columns:
+        print('  [skip] tau_vs_effort: missing time_now_s or time_s columns')
+        return
+
+    # Both logs share the same ROS clock:
+    #   tau_commanded → time_s       (this->get_clock()->now())
+    #   joint_state   → time_now_s   (this->get_clock()->now())
+    t_tau = tau_df['time_s'].values
+    t_js  = js_df['time_now_s'].values
+
+    dt = 0.002  # 500 Hz
+    t0 = max(t_tau[0], t_js[0])
+    t1 = min(t_tau[-1], t_js[-1])
+    if t1 <= t0:
+        print('  [skip] tau_vs_effort: no overlapping time window')
+        return
+    t_common = np.arange(t0, t1, dt)
+
+    delay_estimates: dict[str, float] = {}
+
+    for joint in joint_names:
+        tau_col    = f'{joint}_tau'
+        effort_col = f'{joint}_effort'
+        if tau_col not in tau_df.columns or effort_col not in js_df.columns:
+            continue
+
+        sig_tau    = np.interp(t_common, t_tau, tau_df[tau_col].values)
+        sig_effort = np.interp(t_common, t_js,  js_df[effort_col].values)
+
+        # cross-correlation on zero-meaned signals
+        a = sig_tau    - sig_tau.mean()
+        b = sig_effort - sig_effort.mean()
+        corr = correlate(b, a, mode='full')
+        lags_s = (np.arange(len(corr)) - (len(t_common) - 1)) * dt
+        lags_ms = lags_s * 1000.0
+        peak_ms = float(lags_ms[np.argmax(corr)])
+        delay_estimates[joint] = peak_ms
+
+        t_plot = t_common - t_common[0]
+
+        fig, (ax_raw, ax_corr, ax_aligned) = plt.subplots(
+            3, 1, figsize=(13, 11),
+            gridspec_kw={'height_ratios': [2, 1.2, 2]}
+        )
+        fig.suptitle(
+            f'Delay analysis — {joint.replace("joint_", "")}  '
+            f'(estimated delay: {peak_ms:.1f} ms)',
+            fontsize=13
+        )
+
+        # Panel 1 — raw signals: shift visible as horizontal offset
+        ax_raw.plot(t_plot, sig_tau,    color=CB[3], lw=0.8, label='τ commanded')
+        ax_raw.plot(t_plot, sig_effort, color=CB[5], lw=0.8, label='effort measured', alpha=0.85)
+        ax_raw.set_ylabel('Torque [Nm]')
+        ax_raw.set_title('Raw signals (delay appears as horizontal shift)')
+        ax_raw.legend()
+
+        # Panel 2 — cross-correlation: peak = delay
+        ax_corr.plot(lags_ms, corr / np.abs(corr).max(), color=CB[6], lw=0.8)
+        ax_corr.axvline(peak_ms, color=CB[0], linestyle='--', lw=1.2,
+                        label=f'peak = {peak_ms:.1f} ms')
+        ax_corr.axvline(0, color=CB[0], linestyle=':', lw=0.6, alpha=0.4)
+        ax_corr.set_xlim(-60, 60)
+        ax_corr.set_ylabel('Normalised xcorr')
+        ax_corr.set_title('Cross-correlation  (peak position = delay)')
+        ax_corr.legend()
+
+        # Panel 3 — tau shifted by estimated delay: should overlap with effort
+        shift_samples = int(round(peak_ms / (dt * 1000)))
+        if shift_samples >= 0:
+            tau_shifted = np.pad(sig_tau, (shift_samples, 0),
+                                 mode='edge')[:len(t_plot)]
+        else:
+            tau_shifted = np.pad(sig_tau, (0, -shift_samples),
+                                 mode='edge')[-shift_samples:len(t_plot) - shift_samples]
+            tau_shifted = np.pad(tau_shifted, (0, len(t_plot) - len(tau_shifted)), mode='edge')
+
+        ax_aligned.plot(t_plot, sig_effort, color=CB[5], lw=0.8,
+                        label='effort measured', alpha=0.85)
+        ax_aligned.plot(t_plot, tau_shifted, color=CB[3], lw=0.8, linestyle='--',
+                        label=f'τ commanded (shifted {peak_ms:.1f} ms)')
+        ax_aligned.set_xlabel('Time [s]')
+        ax_aligned.set_ylabel('Torque [Nm]')
+        ax_aligned.set_title('After delay compensation (should overlap if model is correct)')
+        ax_aligned.legend()
+
+        fig.tight_layout()
+        save(fig, 'wbc', 'wbc', 'tau_vs_effort', f'{joint}.png')
+
+    # --- summary bar chart of estimated delays ---
+    if not delay_estimates:
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    short_names = [j.replace('joint_', '') for j in delay_estimates]
+    delays      = list(delay_estimates.values())
+    colors      = [CB[3] if d >= 0 else CB[6] for d in delays]
+    ax.bar(short_names, delays, color=colors)
+    ax.axhline(0, color=CB[0], lw=0.6)
+    ax.set_ylabel('Estimated delay [ms]')
+    ax.set_title('Per-joint delay estimate (τ commanded → effort measured)')
+    fig.tight_layout()
+    save(fig, 'wbc', 'wbc', 'tau_vs_effort', 'delay_summary.png')
+
+
 def plot_wbc(log_dir: Path, joint_names: list) -> None:
     wbc_df = _load_wbc(log_dir)
     if wbc_df is None or wbc_df.empty:
@@ -531,6 +647,8 @@ def plot_wbc(log_dir: Path, joint_names: list) -> None:
     plot_wbc_wheels(wbc_df)
     plot_wbc_torso(wbc_df)
     plot_wbc_solution(wbc_df, js_df, tau_df, joint_names)
+    if js_df is not None and tau_df is not None:
+        plot_wbc_tau_vs_effort(js_df, tau_df, joint_names)
 
 
 # ---------------------------------------------------------------------------

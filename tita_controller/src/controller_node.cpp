@@ -781,8 +781,9 @@ private:
         // for (int idx = 0; idx < na;  ++idx) {
         //     wbc_sol_entry.joints.qdd[idx];
         // }
-        // // ------------ Publish effort commad ------------
-        // effort_cmd_pub_->publish(effort_msg);
+        
+        // ------------ Publish effort commad ------------
+        effort_cmd_pub_->publish(effort_msg);
     }
 
     enum ControlMode {
