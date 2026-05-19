@@ -15,7 +15,7 @@ class walkingPlanner {
   private:
     static constexpr int NX = 14; 
     static constexpr int NU = 9; 
-    static constexpr int T = 15;              // in sec
+    static constexpr int T = 11;              // in sec
     
     double dt_;
     int N_STEP_;     //n. of timesteps
@@ -64,7 +64,7 @@ class walkingPlanner {
 
     double x0          = pcom(0);
     double y0          = pcom(1);
-    double z0          = pcom(2) +0.01;      // lift the robot of 1 cm 
+    double z0          = pcom(2) +0.05;      // lift the robot of 1 cm 
     double z0_contact  = 0.0;
 
     double z_min       = 0.20;
