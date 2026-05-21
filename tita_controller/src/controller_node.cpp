@@ -125,7 +125,17 @@ public:
             .parent_path()   // install
             .parent_path();  // ros2_ws
 
-        log_path_ = std::string(ws_path / "robot_logs");
+        // Find next available experiment folder under robot_logs/
+        auto base_log_dir = ws_path / "robot_logs";
+        std::filesystem::create_directories(base_log_dir);
+        int exp_num = 1;
+        while (std::filesystem::exists(base_log_dir / ("robot_logs_" + std::to_string(exp_num)))) {
+            ++exp_num;
+        }
+        log_path_ = std::string(base_log_dir / ("robot_logs_" + std::to_string(exp_num)));
+        std::filesystem::create_directories(log_path_);
+        RCLCPP_INFO(this->get_logger(), "Experiment %d: logging to %s", exp_num, log_path_.c_str());
+
         auto robot_description_filename = std::string(ws_path / "src/tita_controller/tita_description/tita.urdf");
         // ------------------ Build Pinocchio model ------------------
         // std::string robot_description_filename = std::string(std::getenv("HOME")) + "/ros2_ws/src/tita_controller/tita_description/tita.urdf";
@@ -160,11 +170,6 @@ public:
         // wheel_filter_ptr_ = std::make_shared<labrob::wheel_KF>();   
 
 
-        // Logging
-        std::filesystem::create_directories(log_path_);
-        std::string prefix = std::string(std::getenv("HOME")) + "/ros2_ws/robot_logs/";
-        std::filesystem::create_directories(prefix);
-
         // ---------- KF log ----------
         csv.open(log_path_ + "/kf_test.csv");
         csv << "t,"
@@ -179,7 +184,6 @@ public:
         // wheel_log_.open(log_path_ + "wheel_log.txt");
         // wheel_log_ << "Timestamp, Joint Name, Position, Velocity, Velocity Difference, filter position, filter velocity\n";
         
-        tau_commanded.open(log_path_ + "/tau_commanded.txt");
 
 
 
@@ -915,8 +919,6 @@ private:
 
     std::ofstream csv;
     // std::ofstream wheel_log_;
-
-    std::ofstream tau_commanded;
 
     labrob::Logger node_logger_;
 

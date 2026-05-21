@@ -9,7 +9,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.Kp_torso = 250.0;                     // 120.0
   params.Kd_torso = 80.0;                      // 65.0
-  params.Ki_torso = 100.0;                     // 65.0
+  params.Ki_torso = 0.0;                     // 65.0
 
   params.Kp_regulation = 0.0;            
   params.Kd_regulation = 0.0;      

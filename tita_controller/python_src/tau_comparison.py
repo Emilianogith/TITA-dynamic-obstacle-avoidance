@@ -1,111 +1,72 @@
 #!/usr/bin/env python3
-import matplotlib.pyplot as plt
 import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
 from pathlib import Path
 
+from _exp import select_experiment
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+ROBOT_LOGS = Path.cwd() / 'robot_logs'
 
-ROBOT_LOGS = Path('robot_logs').resolve()
-
-TAU_COMMANDED_PATH = ROBOT_LOGS / "tau_commanded.txt"
-JOINT_STATE_LOG = ROBOT_LOGS / "joint_state_log.txt"
-
-# -----------------------------
-# ARGUMENT PARSER
-# -----------------------------
-parser = argparse.ArgumentParser(description="Plot tau sent vs recorded for a joint")
-parser.add_argument("joint_name", type=str, help="Name of the joint (e.g. joint_right_leg_4)")
-args = parser.parse_args()
-
-joint_name = args.joint_name
-
-# -----------------------------
-# JOINT INDEX MAP
-# -----------------------------
-joint_order = [
-    "joint_left_leg_1",
-    "joint_left_leg_2",
-    "joint_left_leg_3",
-    "joint_left_leg_4",
-    "joint_right_leg_1",
-    "joint_right_leg_2",
-    "joint_right_leg_3",
-    "joint_right_leg_4",
+JOINT_ORDER = [
+    'joint_left_leg_1', 'joint_left_leg_2', 'joint_left_leg_3', 'joint_left_leg_4',
+    'joint_right_leg_1', 'joint_right_leg_2', 'joint_right_leg_3', 'joint_right_leg_4',
 ]
 
-if joint_name not in joint_order:
-    raise ValueError(f"Joint {joint_name} not found in known joint list")
 
-joint_idx = joint_order.index(joint_name) + 1  # +1 because column 0 = time
+def main() -> None:
+    parser = argparse.ArgumentParser(description='Plot tau sent vs recorded for a joint')
+    parser.add_argument('joint_name', type=str,
+                        help='Joint name (e.g. joint_right_leg_4)')
+    parser.add_argument('--base-dir', type=Path, default=ROBOT_LOGS,
+                        help=f'Parent of robot_logs_N folders  [default: {ROBOT_LOGS}]')
+    parser.add_argument('--exp', type=int, default=None, metavar='N',
+                        help='Experiment number (skip interactive prompt)')
+    args = parser.parse_args()
+
+    if args.joint_name not in JOINT_ORDER:
+        raise ValueError(f'Joint {args.joint_name} not found in known joint list')
+
+    log_dir, _out_dir = select_experiment(args.base_dir, args.exp)
+
+    tau_path = log_dir / 'tau_commanded_log.txt'
+    js_path  = log_dir / 'joint_state_log.txt'
+    joint    = args.joint_name
+
+    if not js_path.exists():
+        print(f'  [skip] not found: {js_path}')
+        return
+
+    js_df = pd.read_csv(js_path)
+    t_rec  = js_df['time_now_s'].values
+    effort = js_df[f'{joint}_effort'].values
+
+    t_cmd, tau_cmd = None, None
+    if tau_path.exists():
+        tau_df = pd.read_csv(tau_path)
+        t_cmd   = tau_df['time_s'].values
+        tau_cmd = tau_df[f'{joint}_tau'].values
+    else:
+        print(f'  [warn] not found: {tau_path}')
+
+    t0    = min(t_cmd[0] if t_cmd is not None else t_rec[0], t_rec[0])
+    t_rec = t_rec - t0
+    if t_cmd is not None:
+        t_cmd = t_cmd - t0
+
+    plt.figure(figsize=(8, 4))
+    if t_cmd is not None:
+        plt.plot(t_cmd, tau_cmd, label='tau commanded', linestyle='--')
+    plt.plot(t_rec, effort, label=f'effort measured ({joint})')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Torque [Nm]')
+    plt.title(f'Tau Commanded vs Effort Measured — {joint}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 
-
-# -----------------------------
-# LOAD TAU SENT
-# -----------------------------
-t_cmd = []
-tau_cmd = []
-
-with open(TAU_COMMANDED_PATH, "r") as f:
-    for line in f:
-        parts = line.strip().split()
-        if len(parts) <= joint_idx:
-            continue  # skip lines that don't have enough columns
-
-        t = float(parts[0])             # first column = time
-        tau = float(parts[joint_idx])   # correct joint column
-
-        t_cmd.append(t)
-        tau_cmd.append(tau)
-
-if not t_cmd:
-    raise RuntimeError(f"No tau sent data found for joint {joint_name}")
-
-# -----------------------------
-# LOAD TAU RECORDED
-# -----------------------------
-t_rec = []
-tau_rec = []
-
-with open(JOINT_STATE_LOG, "r") as f:
-    for line in f:
-        line = line.strip()
-        if "--------------------------------" in line:
-            continue
-        if joint_name not in line:
-            continue
-
-        parts = line.split()
-        if len(parts) < 3:
-            continue
-
-        t = float(parts[1])       # second timestamp = ROS time
-        tau = float(parts[-1])    # effort/torque value
-
-        t_rec.append(t)
-        tau_rec.append(tau)
-
-if not t_rec:
-    raise RuntimeError(f"No tau recorded data found for joint {joint_name}")
-
-# -----------------------------
-# ALIGN TIME ORIGIN
-# -----------------------------
-t0 = min(t_cmd[0], t_rec[0])
-t_cmd = [t - t0 for t in t_cmd]
-t_rec = [t - t0 for t in t_rec]
-
-# -----------------------------
-# PLOT
-# -----------------------------
-plt.figure(figsize=(8, 4))
-plt.plot(t_cmd, tau_cmd, label="tau sent", linestyle="--")
-plt.plot(t_rec, tau_rec, label=f"tau recorded ({joint_name})")
-
-plt.xlabel("Time [s]")
-plt.ylabel("Torque [Nm]")
-plt.title(f"Tau Sent vs Tau Recorded ({joint_name})")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+if __name__ == '__main__':
+    main()

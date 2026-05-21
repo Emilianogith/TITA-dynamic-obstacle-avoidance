@@ -67,8 +67,8 @@ plt.rcParams.update({
 })
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-ROBOT_LOGS = Path.cwd() / 'robot_logs'
-OUT_DIR = SCRIPT_DIR / 'images'
+ROBOT_LOGS = Path.cwd() / 'robot_logs'   # base dir; resolved per-experiment in main()
+OUT_DIR    = SCRIPT_DIR.parent / 'images'  # overwritten in main() to images/robot_logs_N/
 
 JOINT_NAMES = [
     'joint_left_leg_1', 'joint_left_leg_2', 'joint_left_leg_3', 'joint_left_leg_4',
@@ -1035,7 +1035,47 @@ def plot_plan(log_dir: Path) -> None:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+def _select_experiment(base: Path, exp_arg: int | None) -> tuple[Path, Path]:
+    """Return (log_dir, out_dir) for the chosen experiment.
+
+    Scans base/ for robot_logs_N folders. If --exp is given uses that number
+    directly. Otherwise lists available experiments and asks interactively.
+    """
+    folders = sorted(
+        [d for d in base.iterdir() if d.is_dir() and d.name.startswith('robot_logs_')],
+        key=lambda d: int(d.name.split('_')[-1])
+    ) if base.exists() else []
+
+    if not folders:
+        print(f'  [warn] No experiment folders found under {base}. Using {base} directly.')
+        return base, SCRIPT_DIR / 'images' / 'default'
+
+    if exp_arg is not None:
+        log_dir = base / f'robot_logs_{exp_arg}'
+        if not log_dir.exists():
+            print(f'  [warn] Experiment {exp_arg} not found, falling back to last.')
+            log_dir = folders[-1]
+    else:
+        print('\nAvailable experiments:')
+        for d in folders:
+            n_files = sum(1 for _ in d.iterdir())
+            print(f'  [{d.name.split("_")[-1]}] {d.name}  ({n_files} files)')
+        print(f'  [last] = {folders[-1].name}')
+        raw = input('\nExperiment number (Enter = last): ').strip()
+        if raw == '' or raw.lower() == 'last':
+            log_dir = folders[-1]
+        else:
+            log_dir = base / f'robot_logs_{raw}'
+            if not log_dir.exists():
+                print(f'  [warn] {log_dir} not found, using last.')
+                log_dir = folders[-1]
+
+    return log_dir, SCRIPT_DIR.parent / 'images'
+
+
 def main() -> None:
+    global OUT_DIR
+
     parser = argparse.ArgumentParser(
         description=(
             'Generate TITA controller plots.\n'
@@ -1045,8 +1085,10 @@ def main() -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--log-dir', type=Path, default=ROBOT_LOGS,
-                        help=f'robot_logs/ directory  [default: {ROBOT_LOGS}]')
+    parser.add_argument('--base-dir', type=Path, default=ROBOT_LOGS,
+                        help=f'Parent of robot_logs_N folders  [default: {ROBOT_LOGS}]')
+    parser.add_argument('--exp', type=int, default=None, metavar='N',
+                        help='Experiment number to plot (skip interactive prompt)')
     parser.add_argument('--joints', nargs='+', default=JOINT_NAMES,
                         help='Joint names for per-joint plots')
     parser.add_argument('--only', nargs='+', default=None, metavar='GROUP',
@@ -1059,7 +1101,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    log_dir = args.log_dir
+    log_dir, OUT_DIR = _select_experiment(args.base_dir, args.exp)
+
     print(f'Log directory : {log_dir}')
     print(f'Output        : {OUT_DIR}')
 
