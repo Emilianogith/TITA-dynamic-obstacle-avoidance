@@ -400,7 +400,7 @@ private:
             const std::string n = (i < static_cast<int>(joint_names_.size()))
                                   ? joint_names_[i]
                                   : ("j" + std::to_string(i));
-            out << "," << n << "_tau";
+            out << "," << n << "_effort";
         }
         out << "\n";
         out << std::fixed << std::setprecision(9);

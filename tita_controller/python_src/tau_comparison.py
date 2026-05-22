@@ -46,7 +46,7 @@ def main() -> None:
     if tau_path.exists():
         tau_df = pd.read_csv(tau_path)
         t_cmd   = tau_df['time_s'].values
-        tau_cmd = tau_df[f'{joint}_tau'].values
+        tau_cmd = tau_df[f'{joint}_effort'].values
     else:
         print(f'  [warn] not found: {tau_path}')
 
