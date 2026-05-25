@@ -77,6 +77,46 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Init WBC:
     // auto params = WholeBodyControllerParams::getRobustParams();
     auto params = WholeBodyControllerParams::getDefaultParams();
+    params.Kp_motion = 100.0;                    // 120.0
+    params.Kd_motion = 0.0;                     // 65.0
+
+    params.Kp_torso = 700.0;                     // 120.0
+    params.Kd_torso = 30.0;                      // 65.0
+    params.Ki_torso = 0.0;                     // 65.0
+
+    // params.Kp_roll = 200;
+    // params.Kd_roll = 30;
+
+    // params.Kp_pitch = 700;
+    // params.Kd_pitch = 30;
+
+    // params.Kp_yaw = 100;
+    // params.Kd_yaw = 10;
+
+    params.Kp_regulation = 0.0;            
+    params.Kd_regulation = 1.0;      
+
+    params.Kp_wheel = 100.0;                     // 95.0  
+    params.Kd_wheel = 0.0;                      // 75.0         
+
+    params.weight_q_ddot = 1e-6;                 // 1e-6    
+    params.weight_com = 5.0;                     // 0.05           
+    params.weight_lwheel = 5.0;                 // 0.05              
+    params.weight_rwheel = 5.0;                 // 0.05              
+    params.weight_base = 5.0;                   // 0.05        
+    params.weight_angular_momentum = 0.00001;    // 0.00001
+    params.weight_regulation = 0.0; 
+
+    params.cmm_selection_matrix_x = 1e-6;       
+    params.cmm_selection_matrix_y = 1e-6;       
+    params.cmm_selection_matrix_z = 1e-4;
+                    
+    params.mu = 0.9;                              // 0.9
+
+    params.integral_clamp = 0.9;
+
+    params.weight_tau_reg = 1e-8;   // prova per gambe trascinate
+
 
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
@@ -231,6 +271,9 @@ void WalkingManager::update(
     des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
 
 
+    // if (std::fabs(t_msec_ - 3800.0) < 0.5){
+    //     walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true, p_CoM);
+    // }
 
 
 
@@ -245,9 +288,10 @@ void WalkingManager::update(
     double roll  = 0.0 * M_PI / 180.0;
     double pitch = 0.0 * M_PI / 180.0;
 
-    // if (cycle_counter < 2500){
-    //     pitch = 0.0 * M_PI / 180.0;
-    // } else if (cycle_counter < 6000){
+    
+    // if (t_msec_ < 2000){
+    //     pitch = -15.0 * M_PI / 180.0;
+    // } else if (t_msec_ < 6000){
     //     pitch = 15.0 * M_PI / 180.0;
     // }
 

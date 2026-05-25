@@ -25,6 +25,15 @@ struct WholeBodyControllerParams {
   double Kp_motion;
   double Kd_motion;
 
+  double Kp_roll;
+  double Kd_roll;
+
+  double Kp_pitch;
+  double Kd_pitch;
+
+  double Kp_yaw;
+  double Kd_yaw;
+
   double Kp_torso;
   double Kd_torso;
   double Ki_torso;
