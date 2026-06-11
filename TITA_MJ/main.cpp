@@ -12,9 +12,10 @@
 
 
 static inline void mat3_mul_vec3(const mjtNum R[9], const mjtNum v[3], mjtNum out[3]) {
-  out[0] = R[0]*v[0] + R[3]*v[1] + R[6]*v[2];
-  out[1] = R[1]*v[0] + R[4]*v[1] + R[7]*v[2];
-  out[2] = R[2]*v[0] + R[5]*v[1] + R[8]*v[2];
+  out[0] = R[0]*v[0] + R[1]*v[1] + R[2]*v[2];
+  out[1] = R[3]*v[0] + R[4]*v[1] + R[5]*v[2];
+  out[2] = R[6]*v[0] + R[7]*v[1] + R[8]*v[2];
+
 }
 
 void print_contacts(const mjModel* m, const mjData* d) {
@@ -43,53 +44,41 @@ void print_contacts(const mjModel* m, const mjData* d) {
     mat3_mul_vec3(con.frame, f_local, f_world);
     mat3_mul_vec3(con.frame, t_local, t_world);
 
-    std::printf("friction:\n");
-    std::printf("[%.6f %.6f %.6f %.6f %.6f]\n", (double)con.friction[0], (double)con.friction[1], (double)con.friction[2], (double)con.friction[3], (double)con.friction[4]);
+    auto dump_geom = [&](int gid){
+    const mjtNum* fr = m->geom_friction + 3*gid;
+    printf("geom %d (%s): fric=[%.3f %.3f %.3f], condim=%d\n",
+          gid, mj_id2name(m, mjOBJ_GEOM, gid),
+          (double)fr[0], (double)fr[1], (double)fr[2],
+          m->geom_condim[gid]);
+    };
 
-    std::printf("con.dim:\n");
-    std::printf("[%.6f]\n", (double)con.dim);
-
-  auto dump_geom = [&](int gid){
-  const mjtNum* fr = m->geom_friction + 3*gid;
-  printf("geom %d (%s): fric=[%.3f %.3f %.3f], condim=%d\n",
-         gid, mj_id2name(m, mjOBJ_GEOM, gid),
-         (double)fr[0], (double)fr[1], (double)fr[2],
-         m->geom_condim[gid]);
-  };
-
-  dump_geom(con.geom1);
-  dump_geom(con.geom2);
+    // dump_geom(con.geom1);
+    // dump_geom(con.geom2);
 
     std::printf(
-      "contact %d: %s <-> %s | pos=[%.3f %.3f %.3f] | "
-      "F_local=[%.3f %.3f %.3f]  T_local=[%.3f %.3f %.3f] | "
-      "F_world=[%.3f %.3f %.3f]\n",
-      i, g1, g2,
+      "contact %d: by %s -> on %s | pos=[%.5f %.5f %.5f] | "
+      "F_world=[%.9f %.9f %.9f]\n",
+      i, g2, g1,
       con.pos[0], con.pos[1], con.pos[2],
-      (double)cf[0], (double)cf[1], (double)cf[2],
-      (double)cf[3], (double)cf[4], (double)cf[5],
       (double)f_world[0], (double)f_world[1], (double)f_world[2]
     );
 
     if (g2 && std::strcmp(g2, "left_leg_4_collision") == 0) {
-      f_l += Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
+      f_l -= Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
     }
     if (g2 && std::strcmp(g2, "right_leg_4_collision") == 0) {
-      f_r += Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
+      f_r -= Eigen::Vector3d(f_world[0], f_world[1], f_world[2]);
     }
-
   }
-
-  std::cout << "f_l from mujoco " << f_l << std::endl;
-  std::cout << "f_r from mujoco " << f_r << std::endl;
+  std::cout << "f_l from mujoco by ground " << f_l << std::endl;
+  std::cout << "f_r from mujoco by ground " << f_r << std::endl;
 }
 
 
-
 void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep_counter){
-  double point[3]{0.0, 0.0, 0.0};
+  double point[3]{-0.1, 0.0, 0.0};
 
-  double force[3] {110.0, -50.0, 110.0}; // {110.0, -50.0, 110.0}; {-200.0, -160.0, -300.0};
+  double force[3] {0.0, 0.0, -100.0}; // {110.0, -50.0, 110.0}; {-200.0, -160.0, -300.0};
   double torque[3]{0.0, 0.0, 0.0};
 
   int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "base_link");
@@ -97,13 +86,11 @@ void apply_disturbance(mjModel* mj_model_ptr, mjData* mj_data_ptr, int& timestep
   if (timestep_counter == 1000) {
     mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
   }
-  if (timestep_counter == 1100) {
-    force[0] = -force[0];
-    force[1] = -force[1];
-    force[2] = -force[2];
-    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+  else if (timestep_counter == 1100){
+    mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
   }
 }
+
 
 
 labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
@@ -221,18 +208,13 @@ int main() {
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   labrob::WalkingManager walking_manager;
   walking_manager.init(initial_robot_state, armatures);
-
   
   // Mujoco UI
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
-
-  double dt = mj_model_ptr->opt.timestep;                       // simulation timestep
-
   static int framerate = 60.0;
   bool first_frame = false;
 
   int timestep_counter = 0;
-
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -267,10 +249,9 @@ int main() {
       joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
     }
 
-    mj_step2(mj_model_ptr, mj_data_ptr);
-
-  
     // print_contacts(mj_model_ptr, mj_data_ptr);
+
+    mj_step2(mj_model_ptr, mj_data_ptr);
 
     // Eigen::Map<const Eigen::VectorXd> qacc(mj_data_ptr->qacc, mj_model_ptr->nv);
     // std::cout << "qacc = " << qacc.transpose() << std::endl;

@@ -24,6 +24,8 @@ namespace labrob {
 struct WholeBodyControllerParams {
   double Kp_motion;
   double Kd_motion;
+  double Kp_torso;
+  double Kd_torso;
   double Kp_regulation;
   double Kd_regulation;
 
@@ -45,6 +47,7 @@ struct WholeBodyControllerParams {
   double mu;
 
   double weight_tau_reg;
+
 
   static WholeBodyControllerParams getDefaultParams();
   static WholeBodyControllerParams getRobustParams();

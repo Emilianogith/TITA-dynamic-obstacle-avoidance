@@ -76,6 +76,8 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init WBC:
     auto params = WholeBodyControllerParams::getRobustParams();
+    // auto params = WholeBodyControllerParams::getDefaultParams();
+
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
         robot_model_,
@@ -113,7 +115,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
     // plan the offline trajectory
-    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true, p_CoM);
+    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, false, p_CoM);
 
     // initialize the MPC
     Eigen::VectorXd x_IN(18);
@@ -228,14 +230,35 @@ void WalkingManager::update(
     des_configuration_.rwheel.vel.segment<3>(0) = sol.pr.vel.segment<3>(0);
     des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
 
+    double roll_des  = 0.0 * M_PI / 180.0;
+    double pitch_des = 0.0 * M_PI / 180.0;
 
-    Eigen::Matrix3d R_theta = Eigen::Matrix3d::Zero();
-    R_theta << cos(sol.theta), -sin(sol.theta), 0,
+    Eigen::Matrix3d R_yaw;
+    R_yaw << cos(sol.theta), -sin(sol.theta), 0,
             sin(sol.theta), cos(sol.theta), 0,
             0,0,1;
-    des_configuration_.base_link.pos = R_theta;
+    // Roll around X
+    Eigen::Matrix3d R_roll;
+    R_roll << 1.0, 0.0,        0.0,
+            0.0, cos(roll_des), -sin(roll_des),
+            0.0, sin(roll_des),  cos(roll_des);
+    // Pitch around Y
+    Eigen::Matrix3d R_pitch;
+    R_pitch <<  cos(pitch_des), 0.0, sin(pitch_des),
+                0.0,        1.0, 0.0,
+            -sin(pitch_des), 0.0, cos(pitch_des);
+
+    // Combined rotation
+    // first roll, then pitch
+    Eigen::Matrix3d R_des = R_yaw * R_pitch * R_roll;
+    
+    des_configuration_.base_link.pos = R_des;
     des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
     des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
+
+
+
+
 
     // get jumping phase from planned trajectory
         // jump_state = 0 : contact phase
@@ -258,7 +281,7 @@ void WalkingManager::update(
         
         case 1: {               // pre-jump phase                                        
             auto params = WholeBodyControllerParams::getDefaultParams();  
-            whole_body_controller_ptr_->params_ = params;       
+            whole_body_controller_ptr_->params_ = params;         
             break;
         }  
 
@@ -298,7 +321,6 @@ void WalkingManager::update(
         des_configuration_.tau_prev(idx) = alpha * des_configuration_.tau_prev(idx) + (1 - alpha) * joint_torque[joint_name];
     }
     
-
 
     auto end_time = std::chrono::system_clock::now();
     auto controller_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();

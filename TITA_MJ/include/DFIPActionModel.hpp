@@ -32,7 +32,7 @@ public:
         d_off_(d_off),
         m_(m)
   {
-    // default weights                      
+    // default weights 
     w_pcomxy_k_ = 100.0;                    
     w_pcomz_k_  = 1000.0;  
     w_vcomxy_k_ = 30.0;   
@@ -49,10 +49,10 @@ public:
     
     w_alpha_k_  = 0.1;
 
-    w_fcxy_k_   = 0.00001;       // 0.0000001;
+    w_fcxy_k_   = 0.00001;         // 0.0000001;
     w_fcz_k_    = 0.0001;          // 0.0000001;
 
-    w_eq_k_     = 1000000.0;     // 100000000;
+    w_eq_k_     = 1000000.0;       // 100000000;
 
     x_ref_k_.setZero(NX_);
     u_ref_k_.setZero(NU_);
