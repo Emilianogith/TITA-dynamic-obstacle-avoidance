@@ -164,17 +164,19 @@ class MujocoUI {
     opt_.flags[mjVIS_TRANSPARENT] = false;
     
     opt_.geomgroup[1] = 0;    // added to not show the collision boxes of the robot
-
-    cam_.distance = 4.0;
-    cam_.azimuth = -90.0;
-    cam_.elevation = -10.0;
     
-    // cam_.distance = 6.0;
+    // initial
+    // cam_.distance = 4.0;
     // cam_.azimuth = -90.0;
-    // cam_.elevation = -20.0;
-    // cam_.lookat[0] = 3.0;
-    // cam_.lookat[1] = 0.0;
-    // cam_.lookat[2] = 0.4;
+    // cam_.elevation = -10.0;
+    
+    // 3 obs
+    cam_.distance = 6.0;
+    cam_.azimuth = -90.0;
+    cam_.elevation = -20.0;
+    cam_.lookat[0] = 3.0;
+    cam_.lookat[1] = 0.0;
+    cam_.lookat[2] = 0.4;
 
 
     // create scene and context

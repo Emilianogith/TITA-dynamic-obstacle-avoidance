@@ -32,27 +32,27 @@ public:
         d_off_(d_off),
         m_(m)
   {
-    // default weights                      
-    w_pcomxy_k_ = 1000.0;                    
+    // default weights 
+    w_pcomxy_k_ = 100.0;                    
     w_pcomz_k_  = 1000.0;  
-    w_vcomxy_k_ = 10.0;   
-    w_vcomz_k_  = 10.0;  
-    w_c_k_      = 0.0;
-    w_v_k_      = 0.0; 
+    w_vcomxy_k_ = 30.0;   
+    w_vcomz_k_  = 90.0;  
+    w_c_k_      = 1000.0;
+    w_v_k_      = 10.0; 
     w_vcz_k_    = 0.0;  
                                       
-    w_theta_k_  = 10.0;
-    w_w_k_      = 0.0;
+    w_theta_k_  = 100.0;
+    w_w_k_      = 5.0;
 
-    w_a_k_      = 0.01;
+    w_a_k_      = 0.1;
     w_acz_k_    = 0.0;
     
-    w_alpha_k_  = 0.01;
+    w_alpha_k_  = 0.1;
 
-    w_fcxy_k_   = 0.00001;       // 0.0000001;
+    w_fcxy_k_   = 0.00001;         // 0.0000001;
     w_fcz_k_    = 0.0001;          // 0.0000001;
 
-    w_eq_k_     = 1000000.0;     // 100000000;
+    w_eq_k_     = 1000000.0;       // 100000000;
 
     x_ref_k_.setZero(NX_);
     u_ref_k_.setZero(NU_);

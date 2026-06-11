@@ -75,48 +75,8 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 
     // Init WBC:
-    // auto params = WholeBodyControllerParams::getRobustParams();
-    auto params = WholeBodyControllerParams::getDefaultParams();
-    params.Kp_motion = 100.0;                    // 120.0
-    params.Kd_motion = 0.0;                     // 65.0
-
-    params.Kp_torso = 700.0;                     // 120.0
-    params.Kd_torso = 30.0;                      // 65.0
-    params.Ki_torso = 0.0;                     // 65.0
-
-    // params.Kp_roll = 200;
-    // params.Kd_roll = 30;
-
-    // params.Kp_pitch = 700;
-    // params.Kd_pitch = 30;
-
-    // params.Kp_yaw = 100;
-    // params.Kd_yaw = 10;
-
-    params.Kp_regulation = 0.0;            
-    params.Kd_regulation = 1.0;      
-
-    params.Kp_wheel = 100.0;                     // 95.0  
-    params.Kd_wheel = 0.0;                      // 75.0         
-
-    params.weight_q_ddot = 1e-6;                 // 1e-6    
-    params.weight_com = 5.0;                     // 0.05           
-    params.weight_lwheel = 5.0;                 // 0.05              
-    params.weight_rwheel = 5.0;                 // 0.05              
-    params.weight_base = 5.0;                   // 0.05        
-    params.weight_angular_momentum = 0.00001;    // 0.00001
-    params.weight_regulation = 0.0; 
-
-    params.cmm_selection_matrix_x = 1e-6;       
-    params.cmm_selection_matrix_y = 1e-6;       
-    params.cmm_selection_matrix_z = 1e-4;
-                    
-    params.mu = 0.9;                              // 0.9
-
-    params.integral_clamp = 0.9;
-
-    params.weight_tau_reg = 1e-8;   // prova per gambe trascinate
-
+    auto params = WholeBodyControllerParams::getRobustParams();
+    // auto params = WholeBodyControllerParams::getDefaultParams();
 
     whole_body_controller_ptr_ = std::make_shared<labrob::WholeBodyController>(
         params,
@@ -155,7 +115,7 @@ bool WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d curr_pr_vel = current_rwheel_vel.head<3>();
 
     // plan the offline trajectory
-    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true, p_CoM);
+    walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, false, p_CoM);
 
     // initialize the MPC
     Eigen::VectorXd x_IN(18);
@@ -225,17 +185,17 @@ void WalkingManager::update(
 
 
     // 3-obstacle
-    // if (std::fabs(t_msec_ - 1230.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.15);
-    // }
+    if (std::fabs(t_msec_ - 1230.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.15);
+    }
 
-    // if (std::fabs(t_msec_ - 2320.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.25);
-    // }
+    if (std::fabs(t_msec_ - 2320.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.25);
+    }
 
-    // if (std::fabs(t_msec_ - 3800.0) < 0.5){
-    //     walkingPlanner_.jumpRoutine(t_msec_, 0.30);
-    // }
+    if (std::fabs(t_msec_ - 3800.0) < 0.5){
+        walkingPlanner_.jumpRoutine(t_msec_, 0.30);
+    }
     // --------------------------------------------------------
 
     
@@ -270,49 +230,31 @@ void WalkingManager::update(
     des_configuration_.rwheel.vel.segment<3>(0) = sol.pr.vel.segment<3>(0);
     des_configuration_.rwheel.acc.segment<3>(0) = sol.pr.acc.segment<3>(0);
 
+    double roll_des  = 0.0 * M_PI / 180.0;
+    double pitch_des = 0.0 * M_PI / 180.0;
 
-    // if (std::fabs(t_msec_ - 3800.0) < 0.5){
-    //     walkingPlanner_.offline_plan(0.001 * controller_timestep_msec_, true, p_CoM);
-    // }
-
-
-
-    Eigen::Matrix3d R_yaw = Eigen::Matrix3d::Zero();
+    Eigen::Matrix3d R_yaw;
     R_yaw << cos(sol.theta), -sin(sol.theta), 0,
             sin(sol.theta), cos(sol.theta), 0,
             0,0,1;
-    // des_configuration_.base_link.pos = R_yaw;
-    des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
-    des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
-
-    double roll  = 0.0 * M_PI / 180.0;
-    double pitch = 0.0 * M_PI / 180.0;
-
-    
-    // if (t_msec_ < 2000){
-    //     pitch = -15.0 * M_PI / 180.0;
-    // } else if (t_msec_ < 6000){
-    //     pitch = 15.0 * M_PI / 180.0;
-    // }
-
     // Roll around X
     Eigen::Matrix3d R_roll;
     R_roll << 1.0, 0.0,        0.0,
-            0.0, cos(roll), -sin(roll),
-            0.0, sin(roll),  cos(roll);
-
+            0.0, cos(roll_des), -sin(roll_des),
+            0.0, sin(roll_des),  cos(roll_des);
     // Pitch around Y
     Eigen::Matrix3d R_pitch;
-    R_pitch <<  cos(pitch), 0.0, sin(pitch),
+    R_pitch <<  cos(pitch_des), 0.0, sin(pitch_des),
                 0.0,        1.0, 0.0,
-            -sin(pitch), 0.0, cos(pitch);
+            -sin(pitch_des), 0.0, cos(pitch_des);
 
     // Combined rotation
     // first roll, then pitch
     Eigen::Matrix3d R_des = R_yaw * R_pitch * R_roll;
+    
     des_configuration_.base_link.pos = R_des;
-
-
+    des_configuration_.base_link.vel = Eigen::Vector3d(0,0,sol.omega);
+    des_configuration_.base_link.acc = Eigen::Vector3d(0,0,sol.alpha);
 
 
 
@@ -339,7 +281,7 @@ void WalkingManager::update(
         
         case 1: {               // pre-jump phase                                        
             auto params = WholeBodyControllerParams::getDefaultParams();  
-            whole_body_controller_ptr_->params_ = params;       
+            whole_body_controller_ptr_->params_ = params;         
             break;
         }  
 
@@ -379,7 +321,6 @@ void WalkingManager::update(
         des_configuration_.tau_prev(idx) = alpha * des_configuration_.tau_prev(idx) + (1 - alpha) * joint_torque[joint_name];
     }
     
-
 
     auto end_time = std::chrono::system_clock::now();
     auto controller_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();

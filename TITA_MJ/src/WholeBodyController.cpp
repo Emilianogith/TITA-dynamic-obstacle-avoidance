@@ -5,29 +5,19 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
   params.Kp_motion = 250.0;                    // 120.0
-  params.Kd_motion = 50.0;                     // 65.0
+  params.Kd_motion = 95.0;                     // 65.0
 
-  params.Kp_torso = 300.0;                     // 120.0
-  params.Kd_torso = 80.0;                      // 65.0
-  params.Ki_torso = 100.0;                     // 65.0
-
-  params.Kp_roll = 10;
-  params.Kd_roll = 1;
-
-  params.Kp_pitch = 10;
-  params.Kd_pitch = 1;
-
-  params.Kp_yaw = 10;
-  params.Kd_yaw = 1;
+  params.Kp_torso = 250.0;                     // 120.0
+  params.Kd_torso = 95.0;                      // 65.0
 
   params.Kp_regulation = 0.0;            
   params.Kd_regulation = 0.0;      
 
   params.Kp_wheel = 250.0;                     // 95.0  
-  params.Kd_wheel = 50.0;                      // 75.0         
+  params.Kd_wheel = 75.0;                      // 75.0         
 
   params.weight_q_ddot = 1e-6;                 // 1e-6    
-  params.weight_com = 0.05;                     // 0.05           
+  params.weight_com = 0.5;                     // 0.05           
   params.weight_lwheel = 0.05;                 // 0.05              
   params.weight_rwheel = 0.05;                 // 0.05              
   params.weight_base = 0.01;                   // 0.05        
@@ -40,8 +30,6 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
                   
   params.mu = 0.9;                              // 0.9
 
-  params.integral_clamp = 0.9;
-
   params.weight_tau_reg = 1e-8;   // prova per gambe trascinate
 
   return params;
@@ -51,10 +39,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getRobustParams() {
   auto params = WholeBodyControllerParams::getDefaultParams();
   params.Kp_motion = 2500.0;
   params.Kd_motion = 300.0; 
-
   params.Kp_torso = 2500.0;                     // 120.0
   params.Kd_torso = 300.0;                      // 65.0
-  params.Ki_torso = 100.0;                     // 65.0
 
   params.Kp_wheel = 1600.0;   
   params.Kd_wheel = 200.0;          
@@ -71,10 +57,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getJumpParams() {
   auto jump_params = WholeBodyControllerParams::getDefaultParams();
   jump_params.Kp_motion = 1000.0;
   jump_params.Kd_motion = 200.0; 
-
   jump_params.Kp_torso = 1000.0;
   jump_params.Kd_torso = 200.0; 
-  jump_params.Ki_torso = 100.0; 
 
   jump_params.Kp_wheel = 1800.0;   
   jump_params.Kd_wheel = 100.0;      
@@ -252,26 +236,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
   Eigen::VectorXd a_lwheel_total = desired.lwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_lwheel.head(select_wheel_pose) + params_.Kd_wheel * err_lwheel_vel.head(select_wheel_pose);
   Eigen::VectorXd a_rwheel_total = desired.rwheel.acc.head(select_wheel_pose) + params_.Kp_wheel * err_rwheel.head(select_wheel_pose) + params_.Kd_wheel * err_rwheel_vel.head(select_wheel_pose);
-
-
-  // added integral action
-  // Integrate with anti-windup clamp
-  base_orient_error_integral_ += err_base_orientation * sample_time_;
-  base_orient_error_integral_ = base_orient_error_integral_.cwiseMax(-params_.integral_clamp)
-                                                          .cwiseMin( params_.integral_clamp);
-  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_torso * err_base_orientation + params_.Kd_torso * err_base_orientation_vel + params_.Ki_torso * base_orient_error_integral_;
-
-  // Eigen::Matrix3d KP_mat = Eigen::Matrix3d::Identity();
-  // KP_mat(0,0) = params_.Kp_roll;
-  // KP_mat(1,1) = params_.Kp_pitch;
-  // KP_mat(2,2) = params_.Kp_yaw;
-
-  // Eigen::Matrix3d KD_mat = Eigen::Matrix3d::Identity();
-  // KD_mat(0,0) = params_.Kd_roll;
-  // KD_mat(1,1) = params_.Kd_pitch;
-  // KD_mat(2,2) = params_.Kd_yaw;
-
-  // Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + KP_mat * err_base_orientation + KD_mat * err_base_orientation_vel;
+  Eigen::VectorXd a_base_orientation_total = desired.base_link.acc + params_.Kp_torso * err_base_orientation + params_.Kd_torso * err_base_orientation_vel;
   
 
 
@@ -380,9 +345,8 @@ WholeBodyController::compute_inverse_dynamics(
     T_l << I3, I3, I3, I3,
         pinocchio::skew(pcis_l[0]), pinocchio::skew(pcis_l[1]), pinocchio::skew(pcis_l[2]), pinocchio::skew(pcis_l[3]);
     T_r << I3, I3, I3, I3,
-        pinocchio::skew(pcis_r[0]), pinocchio::skew(pcis_r[1]), pinocchio::skew(pcis_r[2]), pinocchio::skew(pcis_r[3]);
+        pinocchio::skew(pcis_r[0]), pinocchio::skew(pcis_r[1]), pinocchio::skew(pcis_r[2]), pinocchio::skew(pcis_r[3]);    
   }
-
   
   // QP formulation
   Eigen::MatrixXd H_force_one = 1e-6 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
@@ -501,8 +465,6 @@ WholeBodyController::compute_inverse_dynamics(
 
 
 
-
-
   // DEBUG PRINT
   // std::cout << " r_wheel_center" << r_wheel_center << std::endl;
   // std::cout << " l_wheel_center" << l_wheel_center << std::endl;
@@ -514,12 +476,10 @@ WholeBodyController::compute_inverse_dynamics(
   // std::cout << "err_posture" << err_posture << std::endl;
 
 
-
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);  
   Eigen::VectorXd tau = solution.tail(n_joints_);
-
 
 
   // Fine misurazione del tempo
